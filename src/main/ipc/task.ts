@@ -1,0 +1,30 @@
+import { ipcMain } from 'electron';
+import log from 'electron-log/main.js';
+
+import type { TaskRepository } from '../db/index.js';
+import type { TaskWorker } from '../queue/worker.js';
+import { IPC_CHANNELS } from '../../shared/ipc-channels.js';
+import type { CreateTaskRequest, RetryStepRequest } from '../../shared/types.js';
+
+export function registerTaskIpc(repository: TaskRepository, worker: TaskWorker): void {
+  ipcMain.handle(IPC_CHANNELS.task.create, (_event, request: CreateTaskRequest) => {
+    try {
+      return worker.createTask(request);
+    } catch (error) {
+      log.error('task:create failed', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.task.list, () => repository.listTasks());
+
+  ipcMain.handle(IPC_CHANNELS.task.retry, (_event, taskId: string) => {
+    worker.retryTask(taskId);
+    return repository.getTask(taskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.task.retryStep, (_event, request: RetryStepRequest) => {
+    worker.retryStep(request);
+    return repository.getTask(request.taskId);
+  });
+}

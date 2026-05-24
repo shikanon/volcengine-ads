@@ -1,0 +1,92 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: #f4f6f2;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #ffffff !important;
+  border-right: 1px solid #dbe2d8;
+}
+
+.brand {
+  margin: 24px 18px 18px !important;
+  color: #16372f !important;
+}
+
+.header {
+  height: 72px;
+  padding: 0 28px;
+  background: #ffffff;
+  border-bottom: 1px solid #dbe2d8;
+  display: flex;
+  align-items: center;
+}
+
+.header h3 {
+  margin: 0 !important;
+}
+
+.content {
+  padding: 24px;
+}
+
+.section {
+  width: 100%;
+  background: transparent;
+  padding: 18px 0;
+}
+
+.full-width,
+.form-shell {
+  width: 100%;
+}
+
+.form-shell {
+  max-width: 760px;
+}
+
+.form-shell.wide {
+  max-width: 920px;
+}
+
+.feature-tile {
+  width: 100%;
+  min-height: 132px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 24px;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.feature-tile .anticon {
+  font-size: 36px;
+}
+
+.feature-tile.green {
+  background: #1f7a5c;
+}
+
+.feature-tile.blue {
+  background: #266b92;
+}
+
+.feature-tile.coral {
+  background: #b45b4b;
+}
