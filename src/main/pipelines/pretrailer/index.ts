@@ -3,7 +3,7 @@ import { copyFile } from 'node:fs/promises';
 import { AppError } from '../../errors.js';
 import { concatWithFade, extractAudio, extractFrames, muxAudioVideo, normalizeVideo } from '../../media/ffmpeg.js';
 import type { PretrailerInput } from '../../../shared/types.js';
-import { artifactPath, readJson, writeJson } from '../helpers.js';
+import { artifactPath, parseModelJson, readJson, workflowPrompt, writeJson } from '../helpers.js';
 import type { PipelineDefinition, StepContext } from '../types.js';
 
 interface Understanding {
@@ -36,15 +36,16 @@ async function runUnderstand(ctx: StepContext<PretrailerInput>) {
   await extractFrames(artifactPath(ctx.artifactDir, 'source.mp4'), framesDir);
   const text = await ctx.modelClient.vision(
     [artifactPath(framesDir, 'frame_0001.jpg')],
-    '分析广告产品类目、核心卖点、画面风格、目标人群，输出 JSON。',
+    workflowPrompt(ctx, 'pretrailer.understand'),
   );
-  const understanding: Understanding = {
-    confidence: 0.75,
-    category: 'auto',
-    sellingPoints: [text],
-    visualStyle: '与原片协调，增强开场钩子',
-    audience: '短视频用户',
-  };
+  const understanding = parseModelJson<Understanding>(text, '广告前贴理解');
+  if (
+    typeof understanding.confidence !== 'number' ||
+    !Array.isArray(understanding.sellingPoints) ||
+    !understanding.visualStyle
+  ) {
+    throw new AppError('E_MODEL_API_FAILED', '广告前贴理解缺少必要字段');
+  }
   if (understanding.confidence < 0.6) {
     throw new AppError('E_LOW_CONFIDENCE');
   }
@@ -63,10 +64,17 @@ async function runCopyGen(ctx: StepContext<PretrailerInput>) {
     { role: 'system', content: '你是广告前贴文案专家，输出 JSON：text、hookAtSec、voice。' },
     {
       role: 'user',
-      content: `生成 ${ctx.input.pretrailerDuration}s 前贴，风格 ${ctx.input.style}。原片风格：${understanding.visualStyle}。要求协调但差异化，1 秒内出现核心钩子。`,
+      content: workflowPrompt(ctx, 'pretrailer.copy_gen', {
+        pretrailerDuration: ctx.input.pretrailerDuration,
+        style: ctx.input.style,
+        visualStyle: understanding.visualStyle,
+      }),
     },
   ]);
-  const copy = JSON.parse(response) as PretrailerCopy;
+  const copy = parseModelJson<PretrailerCopy>(response, '广告前贴文案');
+  if (!copy.text || typeof copy.hookAtSec !== 'number' || !copy.voice) {
+    throw new AppError('E_MODEL_API_FAILED', '广告前贴文案缺少必要字段');
+  }
   if (copy.hookAtSec > 1) {
     throw new AppError('E_INPUT_VALIDATION', '前贴钩子必须在 1 秒内出现');
   }
@@ -74,13 +82,23 @@ async function runCopyGen(ctx: StepContext<PretrailerInput>) {
 }
 
 async function runScriptGen(ctx: StepContext<PretrailerInput>) {
+  const understanding = await readJson<Understanding>(artifactPath(ctx.artifactDir, 'understanding.json'));
   const copy = await readJson<PretrailerCopy>(artifactPath(ctx.artifactDir, 'copy.json'));
-  const script: PretrailerScript = {
-    shots: [
-      { index: 1, durationSec: 1, prompt: `强钩子开场：${copy.text}` },
-      { index: 2, durationSec: ctx.input.pretrailerDuration - 1, prompt: copy.text },
-    ],
-  };
+  const response = await ctx.modelClient.chat([
+    { role: 'system', content: '你是短视频广告分镜师。只输出 JSON：{"shots":[{"index":1,"durationSec":1,"prompt":"..."}]}。' },
+    {
+      role: 'user',
+      content: workflowPrompt(ctx, 'pretrailer.script_gen', {
+        pretrailerDuration: ctx.input.pretrailerDuration,
+        copyText: copy.text,
+        understandingJson: JSON.stringify(understanding),
+      }),
+    },
+  ]);
+  const script = parseModelJson<PretrailerScript>(response, '广告前贴分镜');
+  if (!Array.isArray(script.shots) || script.shots.length === 0) {
+    throw new AppError('E_MODEL_API_FAILED', '广告前贴分镜为空');
+  }
   if (script.shots[0]?.durationSec !== undefined && script.shots[0].durationSec > 1) {
     throw new AppError('E_INPUT_VALIDATION', '首镜头必须小于等于 1 秒');
   }
@@ -91,7 +109,7 @@ async function runSeedance(ctx: StepContext<PretrailerInput>) {
   const script = await readJson<PretrailerScript>(artifactPath(ctx.artifactDir, 'script.json'));
   await ctx.modelClient.generateVideo({
     refImagePaths: [artifactPath(ctx.artifactDir, 'keyframes/frame_0001.jpg')],
-    prompt: JSON.stringify(script),
+    prompt: workflowPrompt(ctx, 'pretrailer.seedance', { scriptJson: JSON.stringify(script) }),
     durationSec: ctx.input.pretrailerDuration,
     outputPath: artifactPath(ctx.artifactDir, 'pretrailer.mp4'),
   });

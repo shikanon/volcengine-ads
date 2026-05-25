@@ -1,5 +1,5 @@
 import { Button, Form, Input, InputNumber, Select, Space, Typography, message } from 'antd';
-import { FolderOpenOutlined } from '@ant-design/icons';
+import { FolderOpenOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
@@ -31,11 +31,15 @@ export function Pretrailer() {
   }
 
   return (
-    <section className="section">
+    <section className="section page-panel">
       <Space direction="vertical" size={14} className="form-shell">
-        <Typography.Title level={4}>选择原广告视频</Typography.Title>
+        <div className="form-header">
+          <Typography.Title level={4}>选择原广告视频</Typography.Title>
+          <span>自动生成开场钩子并拼接到原片前</span>
+        </div>
         <Form<FormValues>
           form={form}
+          className="desktop-form"
           layout="vertical"
           initialValues={{ pretrailerDuration: 7, style: 'auto' }}
           onFinish={(values) => void submit(values)}
@@ -44,12 +48,17 @@ export function Pretrailer() {
             <Input
               readOnly
               addonAfter={
-                <Button type="text" icon={<FolderOpenOutlined />} onClick={() => void pickVideo()} />
+                <Button
+                  type="text"
+                  className="icon-button"
+                  icon={<FolderOpenOutlined />}
+                  onClick={() => void pickVideo()}
+                />
               }
             />
           </Form.Item>
           <Form.Item name="pretrailerDuration" label="前贴时长">
-            <InputNumber min={5} max={10} />
+            <InputNumber min={5} max={10} className="number-input" />
           </Form.Item>
           <Form.Item name="style" label="风格偏好">
             <Select
@@ -62,7 +71,7 @@ export function Pretrailer() {
               ]}
             />
           </Form.Item>
-          <Button type="primary" htmlType="submit">
+          <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} className="primary-action">
             创建前贴任务
           </Button>
         </Form>

@@ -72,8 +72,11 @@ export interface CreateTaskWithSteps {
 
 export interface TaskRepository {
   createTask(params: CreateTaskWithSteps): TaskRecord;
+  cloneTask(taskId: string, stepNames: string[]): TaskRecord | undefined;
   listTasks(): TaskRecord[];
   getTask(taskId: string): TaskRecord | undefined;
+  cancelTask(taskId: string): TaskRecord | undefined;
+  deleteTask(taskId: string): boolean;
   updateTaskStatus(taskId: string, status: TaskStatus, progress: number, error?: string): void;
   updateTaskProgress(taskId: string, progress: number): void;
   updateStepRunning(taskId: string, step: string): void;
@@ -192,6 +195,17 @@ export class SqliteTaskRepository implements TaskRepository {
     return created;
   }
 
+  cloneTask(taskId: string, stepNames: string[]): TaskRecord | undefined {
+    const source = this.getTask(taskId);
+    if (!source) {
+      return undefined;
+    }
+    return this.createTask({
+      request: { type: source.type, input: source.input },
+      stepNames,
+    });
+  }
+
   listTasks(): TaskRecord[] {
     const rows = this.db
       .prepare('SELECT * FROM tasks ORDER BY created_at DESC')
@@ -202,6 +216,40 @@ export class SqliteTaskRepository implements TaskRepository {
   getTask(taskId: string): TaskRecord | undefined {
     const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as TaskRow | undefined;
     return row ? mapTask(row, this.getSteps(row.id)) : undefined;
+  }
+
+  cancelTask(taskId: string): TaskRecord | undefined {
+    const task = this.getTask(taskId);
+    if (!task) {
+      return undefined;
+    }
+    if (task.status === 'success' || task.status === 'canceled') {
+      return task;
+    }
+    const now = Date.now();
+    const transaction = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE tasks
+           SET status = 'canceled', error = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run('任务已取消', now, taskId);
+      this.db
+        .prepare(
+          `UPDATE task_steps
+           SET status = 'canceled', logs = ?, finished_at = ?
+           WHERE task_id = ? AND status = 'running'`,
+        )
+        .run('任务已取消', now, taskId);
+    });
+    transaction();
+    return this.getTask(taskId);
+  }
+
+  deleteTask(taskId: string): boolean {
+    const result = this.db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+    return result.changes > 0;
   }
 
   updateTaskStatus(taskId: string, status: TaskStatus, progress: number, error?: string): void {

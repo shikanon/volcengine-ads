@@ -1,12 +1,21 @@
 import type { RuntimeCredentials } from '../secure/keystore.js';
 
 export interface ModelClient {
+  generateImage(req: SeedreamImageRequest): Promise<ImageResult>;
   generateVideo(req: SeedanceVideoRequest): Promise<VideoResult>;
   generateDigitalHuman(req: SeedanceAvatarRequest): Promise<VideoResult>;
   asr(audioPath: string): Promise<TranscriptResult>;
   tts(text: string, voice: string): Promise<AudioResult>;
   chat(messages: ChatMessage[], opts?: ChatOptions): Promise<string>;
   vision(images: string[], prompt: string): Promise<string>;
+  visionVideo(videoPath: string, prompt: string): Promise<string>;
+}
+
+export interface SeedreamImageRequest {
+  refImagePath: string;
+  prompt: string;
+  outputPath: string;
+  size?: string;
 }
 
 export interface SeedanceVideoRequest {
@@ -21,6 +30,7 @@ export interface SeedanceVideoRequest {
 export interface SeedanceAvatarRequest {
   audioPath: string;
   avatarImagePath: string;
+  prompt?: string;
   durationSec?: number;
   outputPath: string;
 }
@@ -29,6 +39,10 @@ export interface VideoResult {
   localPath: string;
   duration: number;
   lipSyncOffsetMs?: number;
+}
+
+export interface ImageResult {
+  localPath: string;
 }
 
 export interface AudioResult {
@@ -49,8 +63,26 @@ export interface TranscriptSegment {
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: ChatContent;
 }
+
+export type ChatContent = string | ChatContentPart[];
+
+export type ChatContentPart =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'image_url';
+      image_url: { url: string };
+      role?: string;
+    }
+  | {
+      type: 'video_url';
+      video_url: { url: string };
+      role?: string;
+    };
 
 export interface ChatOptions {
   temperature?: number;

@@ -2,7 +2,12 @@ node_modules/
 dist/
 release/
 coverage/
+test-results/
+playwright-report/
+.vite/
+*.tsbuildinfo
 *.log
 .DS_Store
 .env*
 userData/
+tmp/

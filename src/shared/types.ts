@@ -1,14 +1,18 @@
-export type TaskType = 'explosion' | 'pretrailer' | 'avatar';
-export type TaskStatus = 'queued' | 'running' | 'success' | 'failed' | 'paused';
-export type StepStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped';
+import type { WorkflowPromptOverrides } from './workflows.js';
+
+export type TaskType = 'explosion' | 'pretrailer' | 'avatar' | 'native';
+export type TaskStatus = 'queued' | 'running' | 'success' | 'failed' | 'paused' | 'canceled';
+export type StepStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'canceled';
 export type AssetKind = 'video' | 'audio' | 'image' | 'script' | 'report';
+export type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool';
+export type NativeRatio = '9:16' | '16:9' | '1:1';
 
 export interface TaskRecord {
   id: string;
   type: TaskType;
   status: TaskStatus;
   progress: number;
-  input: ExplosionInput | PretrailerInput | AvatarInput;
+  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -26,7 +30,8 @@ export interface TaskStep {
 }
 
 export interface ExplosionInput {
-  douyinUrl: string;
+  douyinUrl?: string;
+  sourceVideoPath?: string;
   variantCount: number;
 }
 
@@ -43,6 +48,16 @@ export interface AvatarInput {
   brandIntro: string;
   productImagePaths: string[];
   duration: number;
+}
+
+export interface NativeInput {
+  industry: NativeIndustry;
+  brief: string;
+  productName?: string;
+  referenceVideoPath?: string;
+  variantCount: number;
+  durationSec: number;
+  ratio: NativeRatio;
 }
 
 export interface AssetRecord {
@@ -65,35 +80,58 @@ export interface AvatarRecord {
 
 export interface SettingsState {
   seedanceConfigured: boolean;
+  imageConfigured: boolean;
   llmConfigured: boolean;
   ttsConfigured: boolean;
   asrConfigured: boolean;
+  seedanceApiKey?: string;
+  imageApiKey?: string;
+  llmApiKey?: string;
+  ttsAppId?: string;
+  ttsToken?: string;
+  asrApiKey?: string;
+  asrAppId?: string;
+  asrToken?: string;
+  ossAccessKeyId?: string;
+  ossAccessKeySecret?: string;
   concurrency: number;
   defaultPretrailerStyle: PretrailerStyle;
   complianceAccepted: boolean;
   provider: ProviderPublicSettings;
+  workflowPrompts: WorkflowPromptOverrides;
 }
 
 export interface ProviderPublicSettings {
   seedanceBaseUrl: string;
   seedanceModel: string;
+  imageBaseUrl: string;
+  imageModel: string;
   llmBaseUrl: string;
   llmModel: string;
   ttsBaseUrl: string;
   ttsVoice: string;
   asrBaseUrl: string;
+  asrResourceId: string;
+  ossEndpoint: string;
+  ossBucketName: string;
 }
 
 export interface SettingsUpdate {
   seedanceApiKey?: string;
+  imageApiKey?: string;
   llmApiKey?: string;
   ttsAppId?: string;
   ttsToken?: string;
   asrApiKey?: string;
+  asrAppId?: string;
+  asrToken?: string;
+  ossAccessKeyId?: string;
+  ossAccessKeySecret?: string;
   concurrency?: number;
   defaultPretrailerStyle?: PretrailerStyle;
   complianceAccepted?: boolean;
   provider?: Partial<ProviderPublicSettings>;
+  workflowPrompts?: WorkflowPromptOverrides;
 }
 
 export interface TaskProgressEvent {
@@ -106,7 +144,7 @@ export interface TaskProgressEvent {
 
 export interface CreateTaskRequest {
   type: TaskType;
-  input: ExplosionInput | PretrailerInput | AvatarInput;
+  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput;
 }
 
 export interface RetryStepRequest {

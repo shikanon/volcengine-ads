@@ -1,4 +1,4 @@
-import { Button, Table, Tag, Typography } from 'antd';
+import { Button, Empty, Table, Tag, Typography } from 'antd';
 import { FolderOpenOutlined } from '@ant-design/icons';
 import { useEffect } from 'react';
 
@@ -13,11 +13,18 @@ export function Assets() {
   }, [loadAssets]);
 
   return (
-    <section className="section">
-      <Typography.Title level={4}>本地产物</Typography.Title>
+    <section className="section page-panel">
+      <div className="section-heading">
+        <Typography.Title level={4}>本地产物</Typography.Title>
+      </div>
       <Table<AssetRecord>
         rowKey="id"
+        className="desktop-table"
+        size="small"
         dataSource={assets}
+        locale={{
+          emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无产物" />,
+        }}
         columns={[
           { title: '类型', dataIndex: 'kind', width: 120 },
           {
@@ -31,7 +38,11 @@ export function Assets() {
             title: '定位',
             width: 100,
             render: (_, record) => (
-              <Button icon={<FolderOpenOutlined />} onClick={() => void reveal(record.path)} />
+              <Button
+                className="icon-button secondary-button"
+                icon={<FolderOpenOutlined />}
+                onClick={() => void reveal(record.path)}
+              />
             ),
           },
         ]}

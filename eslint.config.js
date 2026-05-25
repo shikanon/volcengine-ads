@@ -33,6 +33,7 @@ export default [
     languageOptions: {
       globals: {
         Buffer: 'readonly',
+        URL: 'readonly',
         console: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',

@@ -4,6 +4,9 @@ export const IPC_CHANNELS = {
     list: 'task:list',
     retry: 'task:retry',
     retryStep: 'task:retry-step',
+    cancel: 'task:cancel',
+    delete: 'task:delete',
+    clone: 'task:clone',
   },
   asset: {
     list: 'asset:list',

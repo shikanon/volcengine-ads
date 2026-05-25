@@ -2,6 +2,8 @@ appId: com.shikanon.volcengine-ads
 productName: AIGC Ads Studio
 directories:
   output: release
+asarUnpack:
+  - node_modules/ffmpeg-static/**
 files:
   - dist/**
   - package.json

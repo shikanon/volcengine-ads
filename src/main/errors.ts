@@ -6,7 +6,9 @@ export type AppErrorCode =
   | 'E_AVATAR_INVALID'
   | 'E_LOW_CONFIDENCE'
   | 'E_CTA_LOST'
-  | 'E_KEYSTORE_FAILED';
+  | 'E_KEYSTORE_FAILED'
+  | 'E_TASK_NOT_FOUND'
+  | 'E_TASK_STATE';
 
 const DEFAULT_MESSAGES: Record<AppErrorCode, string> = {
   E_INPUT_VALIDATION: '输入参数不合法',
@@ -17,6 +19,8 @@ const DEFAULT_MESSAGES: Record<AppErrorCode, string> = {
   E_LOW_CONFIDENCE: '视频内容理解置信度不足，请更换素材或重试',
   E_CTA_LOST: '文案重写丢失关键卖点，请重试',
   E_KEYSTORE_FAILED: '本地密钥访问失败，请检查系统钥匙串权限',
+  E_TASK_NOT_FOUND: '任务不存在',
+  E_TASK_STATE: '当前任务状态不支持该操作',
 };
 
 export class AppError extends Error {

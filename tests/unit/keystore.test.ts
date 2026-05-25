@@ -9,8 +9,11 @@ function createMemoryRepository(): TaskRepository {
     createTask: () => {
       throw new Error('not implemented');
     },
+    cloneTask: () => undefined,
     listTasks: () => [],
     getTask: () => undefined,
+    cancelTask: () => undefined,
+    deleteTask: () => false,
     updateTaskStatus: () => undefined,
     updateTaskProgress: () => undefined,
     updateStepRunning: () => undefined,
@@ -28,7 +31,7 @@ function createMemoryRepository(): TaskRepository {
 }
 
 describe('SettingsService', () => {
-  it('encrypts secrets and only exposes configured flags publicly', async () => {
+  it('encrypts secrets at rest and returns local settings values', async () => {
     const repository = createMemoryRepository();
     const service = new SettingsService(repository, new StaticSecretProvider('unit-test-secret'));
 
@@ -40,6 +43,39 @@ describe('SettingsService', () => {
     });
     await expect(service.getPublicSettings()).resolves.toMatchObject({
       seedanceConfigured: true,
+      seedanceApiKey: 'secret-key',
+    });
+  });
+
+  it('uses current model defaults and upgrades legacy default model ids', async () => {
+    const repository = createMemoryRepository();
+    repository.setSetting(
+      'provider',
+      JSON.stringify({
+        seedanceModel: 'doubao-seedance-2-0',
+        llmModel: 'doubao-seed-1-6',
+        ttsVoice: 'volcano_tts',
+      }),
+    );
+    const service = new SettingsService(repository, new StaticSecretProvider('unit-test-secret'));
+
+    await expect(service.getPublicSettings()).resolves.toMatchObject({
+      provider: {
+        seedanceModel: 'doubao-seedance-2-0-260128',
+        imageModel: 'doubao-seedream-5-0-260128',
+        llmModel: 'doubao-seed-2-0-pro-260215',
+        ttsVoice: 'zh_female_vv_uranus_bigtts',
+      },
+    });
+  });
+
+  it('accepts plaintext local test secrets from the settings database', async () => {
+    const repository = createMemoryRepository();
+    repository.setSetting('llmApiKey', 'plain-local-test-key');
+    const service = new SettingsService(repository, new StaticSecretProvider('unit-test-secret'));
+
+    await expect(service.getRuntimeCredentials()).resolves.toMatchObject({
+      llmApiKey: 'plain-local-test-key',
     });
   });
 });

@@ -1,5 +1,5 @@
 import { Button, Form, Input, InputNumber, Space, Typography, message } from 'antd';
-import { FolderOpenOutlined } from '@ant-design/icons';
+import { FolderOpenOutlined, UserOutlined } from '@ant-design/icons';
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
@@ -37,11 +37,15 @@ export function Avatar() {
   }
 
   return (
-    <section className="section">
+    <section className="section page-panel">
       <Space direction="vertical" size={14} className="form-shell">
-        <Typography.Title level={4}>配置数字人口播</Typography.Title>
+        <div className="form-header">
+          <Typography.Title level={4}>配置数字人口播</Typography.Title>
+          <span>输入品牌资料和产品图，生成口播成片</span>
+        </div>
         <Form<FormValues>
           form={form}
+          className="desktop-form"
           layout="vertical"
           initialValues={{ duration: 30, productImagePaths: [] }}
           onFinish={(values) => void submit(values)}
@@ -50,23 +54,33 @@ export function Avatar() {
             <Input
               readOnly
               addonAfter={
-                <Button type="text" icon={<FolderOpenOutlined />} onClick={() => void pickAvatar()} />
+                <Button
+                  type="text"
+                  className="icon-button"
+                  icon={<FolderOpenOutlined />}
+                  onClick={() => void pickAvatar()}
+                />
               }
             />
           </Form.Item>
           <Form.Item name="brandIntro" label="品牌介绍" rules={[{ required: true }]}>
             <Input.TextArea rows={5} />
           </Form.Item>
-          <Form.Item name="productImagePaths" label="产品图" rules={[{ required: true }]}>
+          <Form.Item
+            name="productImagePaths"
+            label="产品图"
+            rules={[{ required: true }]}
+            getValueProps={(value?: string[]) => ({ value: (value ?? []).join('\n') })}
+          >
             <Input.TextArea readOnly rows={3} />
           </Form.Item>
-          <Button icon={<FolderOpenOutlined />} onClick={() => void pickProducts()}>
+          <Button className="secondary-button" icon={<FolderOpenOutlined />} onClick={() => void pickProducts()}>
             选择产品图
           </Button>
           <Form.Item name="duration" label="视频时长">
-            <InputNumber min={15} max={60} />
+            <InputNumber min={15} max={60} className="number-input" />
           </Form.Item>
-          <Button type="primary" htmlType="submit">
+          <Button type="primary" htmlType="submit" icon={<UserOutlined />} className="primary-action">
             创建口播任务
           </Button>
         </Form>

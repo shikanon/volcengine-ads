@@ -1,4 +1,4 @@
-import { copyFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 
@@ -7,9 +7,19 @@ import ffmpeg from 'fluent-ffmpeg';
 import { AppError } from '../errors.js';
 
 const require = createRequire(import.meta.url);
-const ffmpegPath = require('ffmpeg-static') as string | null;
+const rawFfmpegPath = require('ffmpeg-static') as string | null;
 
-if (typeof ffmpegPath === 'string') {
+export function resolveFfmpegBinaryPath(binaryPath: string | null): string | undefined {
+  if (typeof binaryPath !== 'string' || binaryPath.length === 0) {
+    return undefined;
+  }
+
+  return binaryPath.replace(/([/\\])app\.asar([/\\])/u, '$1app.asar.unpacked$2');
+}
+
+const ffmpegPath = resolveFfmpegBinaryPath(rawFfmpegPath);
+
+if (ffmpegPath !== undefined) {
   ffmpeg.setFfmpegPath(ffmpegPath);
 }
 
@@ -28,6 +38,30 @@ export async function normalizeVideo(inputPath: string, outputPath: string): Pro
   await run(
     ffmpeg(inputPath)
       .outputOptions(['-c:v libx264', '-c:a aac', '-r 30', '-pix_fmt yuv420p', '-movflags +faststart'])
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
+export async function trimVideo(
+  inputPath: string,
+  outputPath: string,
+  durationSec: number,
+  videoFilter?: string,
+): Promise<string> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  const outputOptions = [
+    '-t',
+    String(durationSec),
+    ...(videoFilter !== undefined ? ['-vf', videoFilter] : []),
+    '-c:v libx264',
+    '-c:a aac',
+    '-pix_fmt yuv420p',
+    '-movflags +faststart',
+  ];
+  await run(
+    ffmpeg(inputPath)
+      .outputOptions(outputOptions)
       .output(outputPath),
   );
   return outputPath;
@@ -77,8 +111,35 @@ export async function concatWithFade(firstPath: string, secondPath: string, outp
   return outputPath;
 }
 
-export async function overlayProductImages(videoPath: string, outputPath: string): Promise<string> {
+export async function overlayProductImages(
+  videoPath: string,
+  productImagePaths: string[],
+  outputPath: string,
+): Promise<string> {
+  if (productImagePaths.length === 0) {
+    throw new AppError('E_INPUT_VALIDATION', '至少需要 1 张产品图');
+  }
   await mkdir(dirname(outputPath), { recursive: true });
-  await copyFile(videoPath, outputPath);
+  const command = ffmpeg().input(videoPath);
+  const filters: string[] = [];
+  let currentVideo = '0:v';
+  productImagePaths.slice(0, 3).forEach((imagePath, index) => {
+    command.input(imagePath);
+    const scaled = `product${index}`;
+    const output = `v${index}`;
+    const start = 4 + index * 6;
+    const end = start + 5;
+    filters.push(`[${index + 1}:v]scale=320:-1[${scaled}]`);
+    filters.push(
+      `[${currentVideo}][${scaled}]overlay=W-w-48:H-h-96:enable='between(t,${start},${end})'[${output}]`,
+    );
+    currentVideo = output;
+  });
+  await run(
+    command
+      .complexFilter(filters)
+      .outputOptions(['-map', `[${currentVideo}]`, '-map', '0:a?', '-c:v libx264', '-c:a copy', '-movflags +faststart'])
+      .output(outputPath),
+  );
   return outputPath;
 }

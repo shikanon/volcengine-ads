@@ -23,6 +23,12 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.task.retry, taskId) as Promise<TaskRecord | undefined>,
     retryStep: (request: RetryStepRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.task.retryStep, request) as Promise<TaskRecord | undefined>,
+    cancel: (taskId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.task.cancel, taskId) as Promise<TaskRecord | undefined>,
+    delete: (taskId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.task.delete, taskId) as Promise<boolean>,
+    clone: (taskId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.task.clone, taskId) as Promise<TaskRecord>,
     onProgress: (callback: (event: TaskProgressEvent) => void) => {
       const listener = (_event: IpcRendererEvent, payload: TaskProgressEvent) => {
         callback(payload);

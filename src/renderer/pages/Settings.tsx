@@ -1,4 +1,5 @@
 import { Button, Form, Input, InputNumber, Select, Space, Switch, Typography, message } from 'antd';
+import { SaveOutlined } from '@ant-design/icons';
 import { useEffect } from 'react';
 
 import { useSettingsStore } from '../stores/settings-store.js';
@@ -14,79 +15,174 @@ export function Settings() {
 
   useEffect(() => {
     if (settings) {
-      form.setFieldsValue({
+      const values: SettingsUpdate = {
         concurrency: settings.concurrency,
         defaultPretrailerStyle: settings.defaultPretrailerStyle,
         complianceAccepted: settings.complianceAccepted,
         provider: settings.provider,
-      });
+      };
+      if (settings.seedanceApiKey) values.seedanceApiKey = settings.seedanceApiKey;
+      if (settings.imageApiKey) values.imageApiKey = settings.imageApiKey;
+      if (settings.llmApiKey) values.llmApiKey = settings.llmApiKey;
+      if (settings.ttsAppId) values.ttsAppId = settings.ttsAppId;
+      if (settings.ttsToken) values.ttsToken = settings.ttsToken;
+      if (settings.asrApiKey) values.asrApiKey = settings.asrApiKey;
+      if (settings.asrAppId) values.asrAppId = settings.asrAppId;
+      if (settings.asrToken) values.asrToken = settings.asrToken;
+      if (settings.ossAccessKeyId) values.ossAccessKeyId = settings.ossAccessKeyId;
+      if (settings.ossAccessKeySecret) values.ossAccessKeySecret = settings.ossAccessKeySecret;
+      form.setFieldsValue(values);
     }
   }, [form, settings]);
 
   async function submit(values: SettingsUpdate) {
     await saveSettings(values);
-    form.resetFields(['seedanceApiKey', 'llmApiKey', 'ttsAppId', 'ttsToken', 'asrApiKey']);
     void message.success('设置已保存');
   }
 
   return (
-    <section className="section">
+    <section className="section page-panel">
       <Space direction="vertical" size={14} className="form-shell wide">
-        <Typography.Title level={4}>模型服务配置</Typography.Title>
-        <Form<SettingsUpdate> form={form} layout="vertical" onFinish={(values) => void submit(values)}>
-          <Form.Item name="seedanceApiKey" label={`Seedance API Key${settings?.seedanceConfigured ? '（已配置）' : ''}`}>
-            <Input.Password autoComplete="off" />
-          </Form.Item>
-          <Form.Item name={['provider', 'seedanceBaseUrl']} label="Seedance Base URL">
-            <Input />
-          </Form.Item>
-          <Form.Item name={['provider', 'seedanceModel']} label="Seedance 模型 ID">
-            <Input />
-          </Form.Item>
-          <Form.Item name="llmApiKey" label={`LLM API Key${settings?.llmConfigured ? '（已配置）' : ''}`}>
-            <Input.Password autoComplete="off" />
-          </Form.Item>
-          <Form.Item name={['provider', 'llmBaseUrl']} label="LLM Base URL">
-            <Input />
-          </Form.Item>
-          <Form.Item name={['provider', 'llmModel']} label="LLM 模型 ID">
-            <Input />
-          </Form.Item>
-          <Form.Item name="ttsAppId" label={`TTS AppId${settings?.ttsConfigured ? '（已配置）' : ''}`}>
-            <Input.Password autoComplete="off" />
-          </Form.Item>
-          <Form.Item name="ttsToken" label="TTS Token">
-            <Input.Password autoComplete="off" />
-          </Form.Item>
-          <Form.Item name={['provider', 'ttsBaseUrl']} label="TTS Base URL">
-            <Input />
-          </Form.Item>
-          <Form.Item name="asrApiKey" label={`ASR API Key${settings?.asrConfigured ? '（已配置）' : ''}`}>
-            <Input.Password autoComplete="off" />
-          </Form.Item>
-          <Form.Item name={['provider', 'asrBaseUrl']} label="ASR Base URL">
-            <Input />
-          </Form.Item>
-          <Form.Item name="concurrency" label="并发任务数">
-            <InputNumber min={1} max={2} />
-          </Form.Item>
-          <Form.Item name="defaultPretrailerStyle" label="默认前贴风格">
-            <Select
-              options={[
-                { value: 'auto', label: '自动推荐' },
-                { value: 'suspense', label: '悬念' },
-                { value: 'contrast', label: '反差' },
-                { value: 'pain', label: '痛点' },
-                { value: 'benefit', label: '福利' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="complianceAccepted" label="已确认版权合规提示" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-          <Button type="primary" htmlType="submit">
-            保存设置
-          </Button>
+        <div className="form-header">
+          <Typography.Title level={4}>模型服务配置</Typography.Title>
+          <span>本地私有化配置会从数据库读取并回填，方便直接检查和修改</span>
+        </div>
+        <Form<SettingsUpdate>
+          form={form}
+          className="desktop-form settings-form"
+          layout="vertical"
+          onFinish={(values) => void submit(values)}
+        >
+          <div className="settings-grid">
+            <section className="settings-section">
+              <Typography.Title level={5}>生成模型</Typography.Title>
+              <Form.Item
+                name="seedanceApiKey"
+                label={`Seedance API Key${settings?.seedanceConfigured ? '（已配置）' : ''}`}
+              >
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name={['provider', 'seedanceBaseUrl']} label="Seedance Base URL">
+                <Input />
+              </Form.Item>
+              <Form.Item name={['provider', 'seedanceModel']} label="Seedance 模型 ID">
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="imageApiKey"
+                label={`图片生成 API Key${settings?.imageConfigured ? '（已配置）' : ''}`}
+              >
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name={['provider', 'imageBaseUrl']} label="图片生成 Base URL">
+                <Input />
+              </Form.Item>
+              <Form.Item name={['provider', 'imageModel']} label="图片生成模型 ID">
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="llmApiKey"
+                label={`LLM API Key${settings?.llmConfigured ? '（已配置）' : ''}`}
+              >
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name={['provider', 'llmBaseUrl']} label="LLM Base URL">
+                <Input />
+              </Form.Item>
+              <Form.Item name={['provider', 'llmModel']} label="LLM 模型 ID">
+                <Input />
+              </Form.Item>
+            </section>
+
+            <section className="settings-section">
+              <Typography.Title level={5}>语音服务</Typography.Title>
+              <Form.Item
+                name="ttsAppId"
+                label={`TTS AppId${settings?.ttsConfigured ? '（已配置）' : ''}`}
+              >
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name="ttsToken" label="TTS Token">
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name={['provider', 'ttsBaseUrl']} label="TTS Base URL">
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="asrApiKey"
+                label={`ASR API Key${settings?.asrConfigured ? '（已配置）' : ''}`}
+              >
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item
+                name="asrAppId"
+                label={`ASR AppID${settings?.asrConfigured ? '（已配置）' : ''}`}
+              >
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name="asrToken" label="ASR Access Token">
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name={['provider', 'asrBaseUrl']} label="ASR Base URL">
+                <Input />
+              </Form.Item>
+              <Form.Item name={['provider', 'asrResourceId']} label="ASR Resource ID">
+                <Input />
+              </Form.Item>
+            </section>
+
+            <section className="settings-section">
+              <Typography.Title level={5}>对象存储</Typography.Title>
+              <Form.Item name="ossAccessKeyId" label="OSS AccessKey ID">
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name="ossAccessKeySecret" label="OSS AccessKey Secret">
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name={['provider', 'ossEndpoint']} label="OSS Endpoint">
+                <Input />
+              </Form.Item>
+              <Form.Item name={['provider', 'ossBucketName']} label="OSS Bucket">
+                <Input />
+              </Form.Item>
+            </section>
+
+            <section className="settings-section">
+              <Typography.Title level={5}>本地行为</Typography.Title>
+              <Form.Item name="concurrency" label="并发任务数">
+                <InputNumber min={1} max={2} className="number-input" />
+              </Form.Item>
+              <Form.Item name="defaultPretrailerStyle" label="默认前贴风格">
+                <Select
+                  options={[
+                    { value: 'auto', label: '自动推荐' },
+                    { value: 'suspense', label: '悬念' },
+                    { value: 'contrast', label: '反差' },
+                    { value: 'pain', label: '痛点' },
+                    { value: 'benefit', label: '福利' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name="complianceAccepted"
+                label="已确认版权合规提示"
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+            </section>
+          </div>
+
+          <div className="form-actions">
+            <Button
+              type="primary"
+              htmlType="submit"
+              icon={<SaveOutlined />}
+              className="primary-action"
+            >
+              保存设置
+            </Button>
+          </div>
         </Form>
       </Space>
     </section>

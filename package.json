@@ -13,6 +13,19 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:live": "node scripts/live-volcengine-smoke.mjs",
+    "test:live:app": "LIVE_SMOKE_USE_APP_SETTINGS=1 node scripts/live-volcengine-smoke.mjs",
+    "test:live:asr": "LIVE_SMOKE_TARGET=asr node scripts/live-volcengine-smoke.mjs",
+    "test:live:avatar": "LIVE_SMOKE_TARGET=avatar node scripts/live-volcengine-smoke.mjs",
+    "test:live:chat": "LIVE_SMOKE_TARGET=chat node scripts/live-volcengine-smoke.mjs",
+    "test:live:features": "LIVE_SMOKE_TARGET=features node scripts/live-volcengine-smoke.mjs",
+    "test:live:feature:avatar": "LIVE_SMOKE_TARGET=feature-avatar node scripts/live-volcengine-smoke.mjs",
+    "test:live:feature:explosion": "LIVE_SMOKE_TARGET=feature-explosion node scripts/live-volcengine-smoke.mjs",
+    "test:live:feature:pretrailer": "LIVE_SMOKE_TARGET=feature-pretrailer node scripts/live-volcengine-smoke.mjs",
+    "test:live:image": "LIVE_SMOKE_TARGET=image node scripts/live-volcengine-smoke.mjs",
+    "test:live:native": "LIVE_SMOKE_TARGET=native node scripts/live-volcengine-smoke.mjs",
+    "test:live:tts": "LIVE_SMOKE_TARGET=tts node scripts/live-volcengine-smoke.mjs",
+    "test:live:video": "LIVE_SMOKE_TARGET=video node scripts/live-volcengine-smoke.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
@@ -62,6 +75,9 @@
   "build": {
     "appId": "com.shikanon.volcengine-ads",
     "productName": "AIGC Ads Studio",
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
     "files": [
       "dist/**",
       "package.json"

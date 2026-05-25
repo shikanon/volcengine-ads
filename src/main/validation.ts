@@ -5,10 +5,21 @@ import type {
   AvatarInput,
   CreateTaskRequest,
   ExplosionInput,
+  NativeIndustry,
+  NativeInput,
+  NativeRatio,
   PretrailerInput,
   PretrailerStyle,
 } from '../shared/types.js';
 
+const NATIVE_INDUSTRIES: readonly NativeIndustry[] = [
+  'game',
+  'short_drama',
+  'novel',
+  'social',
+  'tool',
+];
+const NATIVE_RATIOS: readonly NativeRatio[] = ['9:16', '16:9', '1:1'];
 const PRETRAILER_STYLES: readonly PretrailerStyle[] = [
   'auto',
   'suspense',
@@ -39,12 +50,25 @@ function validateExplosion(input: unknown): ExplosionInput {
   if (!isRecord(input)) {
     throw new AppError('E_INPUT_VALIDATION', '爆款裂变输入格式错误');
   }
-  const douyinUrl = requireString(input.douyinUrl, '抖音链接');
+  const douyinUrl = typeof input.douyinUrl === 'string' ? input.douyinUrl.trim() : '';
+  const sourceVideoPath =
+    typeof input.sourceVideoPath === 'string' ? input.sourceVideoPath.trim() : '';
+  if (
+    (douyinUrl.length > 0 && sourceVideoPath.length > 0) ||
+    (douyinUrl.length === 0 && sourceVideoPath.length === 0)
+  ) {
+    throw new AppError('E_INPUT_VALIDATION', '抖音链接和本地视频必须二选一');
+  }
+  if (sourceVideoPath.length > 0 && !existsSync(sourceVideoPath)) {
+    throw new AppError('E_INPUT_VALIDATION', '本地视频不存在');
+  }
   const variantCount = Math.trunc(requireNumber(input.variantCount ?? 3, '裂变数量'));
   if (variantCount < 1 || variantCount > 10) {
     throw new AppError('E_INPUT_VALIDATION', '裂变数量必须在 1..10');
   }
-  return { douyinUrl, variantCount };
+  return sourceVideoPath.length > 0
+    ? { sourceVideoPath, variantCount }
+    : { douyinUrl, variantCount };
 }
 
 function validatePretrailer(input: unknown): PretrailerInput {
@@ -55,9 +79,7 @@ function validatePretrailer(input: unknown): PretrailerInput {
   if (!existsSync(sourceVideoPath)) {
     throw new AppError('E_INPUT_VALIDATION', '原广告视频不存在');
   }
-  const pretrailerDuration = Math.trunc(
-    requireNumber(input.pretrailerDuration ?? 7, '前贴时长'),
-  );
+  const pretrailerDuration = Math.trunc(requireNumber(input.pretrailerDuration ?? 7, '前贴时长'));
   if (pretrailerDuration < 5 || pretrailerDuration > 10) {
     throw new AppError('E_INPUT_VALIDATION', '前贴时长必须在 5..10 秒');
   }
@@ -81,7 +103,11 @@ function validateAvatar(input: unknown): AvatarInput {
     throw new AppError('E_INPUT_VALIDATION', '品牌介绍建议 100..500 字，当前需在 20..1000 字');
   }
   const rawProductImages = input.productImagePaths;
-  if (!Array.isArray(rawProductImages) || rawProductImages.length < 1 || rawProductImages.length > 3) {
+  if (
+    !Array.isArray(rawProductImages) ||
+    rawProductImages.length < 1 ||
+    rawProductImages.length > 3
+  ) {
     throw new AppError('E_INPUT_VALIDATION', '产品图需上传 1..3 张');
   }
   const productImagePaths = rawProductImages.map((item, index) =>
@@ -99,6 +125,57 @@ function validateAvatar(input: unknown): AvatarInput {
   return { avatarImagePath, brandIntro, productImagePaths, duration };
 }
 
+function validateNative(input: unknown): NativeInput {
+  if (!isRecord(input)) {
+    throw new AppError('E_INPUT_VALIDATION', '原生爆款输入格式错误');
+  }
+  const industry = input.industry;
+  if (typeof industry !== 'string' || !NATIVE_INDUSTRIES.includes(industry as NativeIndustry)) {
+    throw new AppError('E_INPUT_VALIDATION', '原生爆款行业不支持');
+  }
+  const brief = requireString(input.brief, '创意简报');
+  if (brief.length < 10 || brief.length > 2000) {
+    throw new AppError('E_INPUT_VALIDATION', '创意简报需在 10..2000 字');
+  }
+  const productName =
+    typeof input.productName === 'string' && input.productName.trim().length > 0
+      ? input.productName.trim()
+      : undefined;
+  if (productName !== undefined && productName.length > 80) {
+    throw new AppError('E_INPUT_VALIDATION', '产品名称不能超过 80 字');
+  }
+  const referenceVideoPath =
+    typeof input.referenceVideoPath === 'string' && input.referenceVideoPath.trim().length > 0
+      ? input.referenceVideoPath.trim()
+      : undefined;
+  if (referenceVideoPath !== undefined && !existsSync(referenceVideoPath)) {
+    throw new AppError('E_INPUT_VALIDATION', '参考视频不存在');
+  }
+  const variantCount = Math.trunc(requireNumber(input.variantCount ?? 1, '生成数量'));
+  if (variantCount < 1 || variantCount > 5) {
+    throw new AppError('E_INPUT_VALIDATION', '生成数量必须在 1..5');
+  }
+  const durationSec = Math.trunc(requireNumber(input.durationSec ?? 15, '视频时长'));
+  const industryValue = industry as NativeIndustry;
+  const maxDuration = industryValue === 'short_drama' ? 300 : industryValue === 'novel' ? 60 : 30;
+  if (durationSec < 15 || durationSec > maxDuration) {
+    throw new AppError('E_INPUT_VALIDATION', `视频时长必须在 15..${maxDuration} 秒`);
+  }
+  const ratio = input.ratio;
+  if (typeof ratio !== 'string' || !NATIVE_RATIOS.includes(ratio as NativeRatio)) {
+    throw new AppError('E_INPUT_VALIDATION', '视频比例不支持');
+  }
+  return {
+    industry: industryValue,
+    brief,
+    ...(productName !== undefined ? { productName } : {}),
+    ...(referenceVideoPath !== undefined ? { referenceVideoPath } : {}),
+    variantCount,
+    durationSec,
+    ratio: ratio as NativeRatio,
+  };
+}
+
 export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskRequest {
   if (!isRecord(req)) {
     throw new AppError('E_INPUT_VALIDATION', '任务参数格式错误');
@@ -111,6 +188,9 @@ export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskReq
   }
   if (req.type === 'avatar') {
     return { type: 'avatar', input: validateAvatar(req.input) };
+  }
+  if (req.type === 'native') {
+    return { type: 'native', input: validateNative(req.input) };
   }
   throw new AppError('E_INPUT_VALIDATION', '任务类型不支持');
 }

@@ -27,4 +27,31 @@ export function registerTaskIpc(repository: TaskRepository, worker: TaskWorker):
     worker.retryStep(request);
     return repository.getTask(request.taskId);
   });
+
+  ipcMain.handle(IPC_CHANNELS.task.cancel, (_event, taskId: string) => {
+    try {
+      return worker.cancelTask(taskId);
+    } catch (error) {
+      log.error('task:cancel failed', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.task.delete, (_event, taskId: string) => {
+    try {
+      return worker.deleteTask(taskId);
+    } catch (error) {
+      log.error('task:delete failed', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.task.clone, (_event, taskId: string) => {
+    try {
+      return worker.cloneTask(taskId);
+    } catch (error) {
+      log.error('task:clone failed', error);
+      throw error;
+    }
+  });
 }

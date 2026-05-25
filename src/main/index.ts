@@ -25,7 +25,7 @@ function createMainWindow(): BrowserWindow {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
-      preload: join(app.getAppPath(), 'dist/preload/index.js'),
+      preload: join(app.getAppPath(), 'dist/preload/index.cjs'),
     },
   });
 
@@ -51,6 +51,7 @@ async function bootstrap(): Promise<void> {
     repository,
     modelClientFactory,
     app.getPath('userData'),
+    () => settingsService.getWorkflowPrompts(),
     (event) => mainWindow?.webContents.send(IPC_CHANNELS.event.taskProgress, event),
   );
 
