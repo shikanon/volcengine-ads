@@ -24,6 +24,7 @@ export interface SeedanceVideoRequest {
   prompt: string;
   durationSec?: number;
   resolution?: string;
+  generateAudio?: boolean;
   outputPath: string;
 }
 

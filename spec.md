@@ -22,7 +22,7 @@
 3. `script_writer`：写入 `scripts.json`
 4. `storyboard_builder`：写入 `storyboard.json`
 5. `compliance_pre`：写入 `compliance_pre.json`
-6. `asset_generator`：写入 `assets.json`
+6. `asset_generator`：写入 `assets.json`。单次 Seedance 生成片段必须控制在 4..15s；当 `durationSec` 超过 15s 时，按多个片段生成（如 25s = 15s + 10s），记录每段成功/失败状态，最终用 FFmpeg 拼接为单条成片。
 7. `consistency_checker`：写入 `consistency.json`
 8. `composer`：写入 `finals.json` 并入库成片
 

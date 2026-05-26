@@ -10,6 +10,12 @@ import type { TaskRepository } from '../db/index.js';
 import type { TaskProgressEvent, TaskRecord } from '../../shared/types.js';
 import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
 import type { PipelineDefinition, StepContext } from './types.js';
+import {
+  appendPipelineLog,
+  errorToLogFields,
+  formatErrorForUser,
+  type PipelineLogLevel,
+} from './task-log.js';
 
 export type ProgressEmitter = (event: TaskProgressEvent) => void;
 
@@ -42,7 +48,15 @@ export async function runPipeline(params: {
   const { task, pipeline, repository, modelClient, workflowPrompts, userDataPath, emitProgress } =
     params;
   const artifactDir = join(userDataPath, 'artifacts', task.id);
+  const logFilePath = join(artifactDir, 'pipeline.log');
   await mkdir(artifactDir, { recursive: true });
+  await appendPipelineLog(logFilePath, {
+    taskId: task.id,
+    step: 'pipeline',
+    level: 'info',
+    message: '任务开始执行',
+    data: { taskType: task.type, artifactDir },
+  });
   repository.updateTaskStatus(task.id, 'running', task.progress);
 
   const total = pipeline.steps.length;
@@ -59,16 +73,38 @@ export async function runPipeline(params: {
     repository.updateStepRunning(task.id, step.name);
     repository.updateTaskProgress(task.id, progress);
     emitProgress({ taskId: task.id, status: 'running', progress, step: step.name });
+    await appendPipelineLog(logFilePath, {
+      taskId: task.id,
+      step: step.name,
+      level: 'info',
+      message: '节点开始执行',
+      data: { progress },
+    });
 
     try {
+      const appendLog = async (
+        level: PipelineLogLevel,
+        message: string,
+        data?: Record<string, unknown>,
+      ): Promise<void> => {
+        await appendPipelineLog(logFilePath, {
+          taskId: task.id,
+          step: step.name,
+          level,
+          message,
+          ...(data !== undefined ? { data } : {}),
+        });
+      };
       const ctx: StepContext = {
         task,
         input: task.input,
         artifactDir,
+        logFilePath,
         repository,
         modelClient,
         workflowPrompts,
         emitProgress,
+        appendLog,
       };
       const result = await step.runStep(ctx);
       if (isCanceled(repository, task.id)) {
@@ -78,23 +114,50 @@ export async function runPipeline(params: {
       repository.updateStepSuccess(task.id, step.name, result.artifactPath, result.logs);
       const nextProgress = Math.floor(((index + 1) / total) * 100);
       repository.updateTaskProgress(task.id, nextProgress);
+      await appendPipelineLog(logFilePath, {
+        taskId: task.id,
+        step: step.name,
+        level: 'info',
+        message: '节点执行成功',
+        data: {
+          progress: nextProgress,
+          ...(result.artifactPath !== undefined ? { artifactPath: result.artifactPath } : {}),
+          ...(result.logs !== undefined ? { logs: result.logs } : {}),
+        },
+      });
       emitProgress({ taskId: task.id, status: 'running', progress: nextProgress, step: step.name });
     } catch (error) {
       const appError = toAppError(error, 'E_MODEL_API_FAILED');
       log.error(`Pipeline step failed: task=${task.id}, step=${step.name}`, appError);
-      repository.updateStepFailed(task.id, step.name, appError.message);
-      repository.updateTaskStatus(task.id, 'paused', progress, appError.message);
+      await appendPipelineLog(logFilePath, {
+        taskId: task.id,
+        step: step.name,
+        level: 'error',
+        message: '节点执行失败',
+        ...errorToLogFields(appError),
+        data: { progress },
+      });
+      const userError = formatErrorForUser(appError, logFilePath);
+      repository.updateStepFailed(task.id, step.name, userError);
+      repository.updateTaskStatus(task.id, 'paused', progress, userError);
       emitProgress({
         taskId: task.id,
         status: 'paused',
         progress,
         step: step.name,
-        message: appError.message,
+        message: userError,
       });
       throw appError;
     }
   }
 
   repository.updateTaskStatus(task.id, 'success', 100);
+  await appendPipelineLog(logFilePath, {
+    taskId: task.id,
+    step: 'pipeline',
+    level: 'info',
+    message: '任务执行成功',
+    data: { progress: 100 },
+  });
   emitProgress({ taskId: task.id, status: 'success', progress: 100 });
 }

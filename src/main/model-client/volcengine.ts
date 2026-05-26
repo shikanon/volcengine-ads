@@ -48,6 +48,8 @@ const SEEDREAM_IMAGE_EXTS = SEEDANCE_IMAGE_EXTS;
 const SEEDANCE_VIDEO_EXTS = new Set(['.mp4', '.mov']);
 const SEEDANCE_AUDIO_EXTS = new Set(['.wav', '.mp3']);
 const ASR_AUDIO_EXTS = new Set(['.wav', '.mp3', '.ogg', '.m4a']);
+const TTS_AUDIO_CHUNK_CODES = new Set([0, 3000]);
+const TTS_SUCCESS_TERMINAL_CODES = new Set([20000000]);
 const MIB = 1024 * 1024;
 const EMPTY_TRANSCRIPT: TranscriptResult = { text: '', segments: [] };
 
@@ -60,7 +62,10 @@ interface ArkTaskResponse {
   };
   video_url?: string;
   error?: {
+    code?: string;
     message?: string;
+    param?: string;
+    type?: string;
   };
 }
 
@@ -88,7 +93,9 @@ interface AsrQueryResponse {
 function isAsrNoSpeech(statusCode: string | null, message: string): boolean {
   return (
     statusCode === '20000003' &&
-    /normal silence audio|no valid speech|no speech|silence audio|无有效(?:语音|人声)|静音/iu.test(message)
+    /normal silence audio|no valid speech|no speech|silence audio|无有效(?:语音|人声)|静音/iu.test(
+      message,
+    )
   );
 }
 
@@ -478,7 +485,11 @@ async function downloadFile(url: string, outputPath: string): Promise<void> {
   await mkdir(dirname(outputPath), { recursive: true });
   const response = await fetch(url);
   if (!response.ok) {
-    throw new AppError('E_MODEL_API_FAILED', `下载模型结果失败：${response.status}`);
+    const body = await response.text();
+    throw new AppError(
+      'E_MODEL_API_FAILED',
+      `下载模型结果失败：HTTP ${response.status} ${response.statusText} ${body.slice(0, 300)}`,
+    );
   }
   const buffer = Buffer.from(await response.arrayBuffer());
   await writeFile(outputPath, buffer);
@@ -488,9 +499,15 @@ async function parseJson<T>(response: Awaited<ReturnType<typeof fetch>>): Promis
   const body = (await response.text()) || '{}';
   if (!response.ok) {
     if (response.status === 400) {
-      throw new AppError('E_INPUT_VALIDATION', `云端参数校验失败：${body.slice(0, 300)}`);
+      throw new AppError(
+        'E_INPUT_VALIDATION',
+        `云端参数校验失败：HTTP ${response.status} ${response.statusText} ${body.slice(0, 500)}`,
+      );
     }
-    throw new AppError('E_MODEL_API_FAILED', `HTTP ${response.status}: ${body.slice(0, 300)}`);
+    throw new AppError(
+      'E_MODEL_API_FAILED',
+      `HTTP ${response.status} ${response.statusText}: ${body.slice(0, 500)}`,
+    );
   }
   return JSON.parse(body) as T;
 }
@@ -505,6 +522,24 @@ function extractTaskId(data: ArkTaskResponse): string {
 
 function extractVideoUrl(data: ArkTaskResponse): string | undefined {
   return data.content?.video_url ?? data.video_url;
+}
+
+function summarizeArkTaskFailure(data: ArkTaskResponse, taskId: string): string {
+  const errorParts = [
+    data.error?.code ? `code=${data.error.code}` : undefined,
+    data.error?.type ? `type=${data.error.type}` : undefined,
+    data.error?.param ? `param=${data.error.param}` : undefined,
+    data.error?.message ? `message=${data.error.message}` : undefined,
+  ].filter((part): part is string => part !== undefined);
+  const raw = JSON.stringify(data).slice(0, 1000);
+  return [
+    `task_id=${taskId}`,
+    data.status ? `status=${data.status}` : undefined,
+    errorParts.length > 0 ? errorParts.join(', ') : undefined,
+    `raw=${raw}`,
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join('；');
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -601,7 +636,13 @@ export class VolcengineModelClient implements ModelClient {
         role: 'reference_video',
       });
     }
-    return this.submitAndDownloadVideo(content, outputPath, durationSec, resolution);
+    return this.submitAndDownloadVideo(
+      content,
+      outputPath,
+      durationSec,
+      resolution,
+      req.generateAudio ?? false,
+    );
   }
 
   async generateDigitalHuman(req: SeedanceAvatarRequest): Promise<VideoResult> {
@@ -624,9 +665,7 @@ export class VolcengineModelClient implements ModelClient {
       },
       {
         type: 'text',
-        text:
-          req.prompt ??
-          '基于参考音频驱动数字人口播，保持正面构图、自然唇形和轻微表情动作。',
+        text: req.prompt ?? '基于参考音频驱动数字人口播，保持正面构图、自然唇形和轻微表情动作。',
       },
     ];
     return this.submitAndDownloadVideo(content, outputPath, durationSec, '720p');
@@ -809,9 +848,15 @@ export class VolcengineModelClient implements ModelClient {
           for (const line of body.split('\n')) {
             if (!line.trim()) continue;
             const data = JSON.parse(line) as { code?: number; data?: string; message?: string };
-            if ((data.code === 0 || data.code === 3000) && data.data) {
+            if (data.code !== undefined && TTS_AUDIO_CHUNK_CODES.has(data.code) && data.data) {
               chunks.push(Buffer.from(data.data, 'base64'));
-            } else if (data.code && data.code !== 3031 && !data.data) {
+            } else if (
+              data.code !== undefined &&
+              !TTS_AUDIO_CHUNK_CODES.has(data.code) &&
+              !TTS_SUCCESS_TERMINAL_CODES.has(data.code) &&
+              data.code !== 3031 &&
+              !data.data
+            ) {
               throw new AppError('E_MODEL_API_FAILED', data.message ?? `TTS code ${data.code}`);
             }
           }
@@ -909,6 +954,7 @@ export class VolcengineModelClient implements ModelClient {
     outputPath: string,
     durationSec = 10,
     resolution = '720p',
+    generateAudio = false,
   ): Promise<VideoResult> {
     const credentials = this.credentials;
     if (!credentials.seedanceApiKey) {
@@ -931,7 +977,7 @@ export class VolcengineModelClient implements ModelClient {
                 duration: durationSec,
                 resolution,
                 ratio: normalizeSeedanceRatio('adaptive'),
-                generate_audio: false,
+                generate_audio: generateAudio,
                 watermark: false,
               }),
             },
@@ -967,7 +1013,7 @@ export class VolcengineModelClient implements ModelClient {
         return videoUrl;
       }
       if (data.status === 'failed' || data.status === 'expired') {
-        throw new AppError('E_MODEL_API_FAILED', data.error?.message ?? `Seedance ${data.status}`);
+        throw new AppError('E_MODEL_API_FAILED', summarizeArkTaskFailure(data, taskId));
       }
       await sleep(DEFAULT_POLL_INTERVAL_MS);
     }

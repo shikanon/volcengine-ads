@@ -55,6 +55,9 @@ export const NATIVE_INDUSTRY_DEFINITIONS: Record<NativeIndustry, NativeIndustryD
 export const VIDEO_COMPOSITION_PROMPT =
   '构图层面：包含构图形式、空间层次、视觉秩序、视觉重心、疏密虚实对比、视线引导与叙事氛围。';
 
+export const VIDEO_TEXT_STICKER_PROMPT =
+  '视频生成阶段禁止生成文字贴纸、花字、字幕、角标、价格牌、按钮文案或任何可读文字；这些文字贴纸应由图片模型单独生成透明贴纸素材，并在合成阶段通过 FFmpeg 叠加到对应位置。';
+
 export const WORKFLOW_PROMPT_DEFINITIONS = {
   'explosion.script_parse': {
     title: '脚本解析',
@@ -155,14 +158,14 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '把创意方案写成可投放广告脚本。',
     variables: ['industryTitle', 'brief', 'conceptsJson', 'durationSec'],
     defaultPrompt:
-      '基于{industryTitle}行业策略，把概念写成 {durationSec}s 原生广告脚本。创意简报：{brief}。概念：{conceptsJson}。只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整口播/字幕脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","beats":[{"timeSec":0,"text":"..."}]}]}。',
+      '基于{industryTitle}行业策略，把概念写成 {durationSec}s 原生广告脚本。若总时长超过 15s，请按 Seedance 可生成片段规划节奏，每段 4-15s，例如 25s 拆为 15s + 10s。创意简报：{brief}。概念：{conceptsJson}。只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整口播/字幕脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","beats":[{"timeSec":0,"text":"..."}]}]}。',
   },
   'native.storyboard_builder': {
     title: '分镜构建',
     description: '把脚本拆成视频生成可用分镜。',
     variables: ['industryTitle', 'ratio', 'scriptsJson', 'durationSec'],
     defaultPrompt:
-      `把{industryTitle}广告脚本拆成适合 Seedance 生成的分镜，视频比例 {ratio}，总时长约 {durationSec}s。每个 videoPrompt 必须写清楚${VIDEO_COMPOSITION_PROMPT}脚本：{scriptsJson}。只输出 JSON：{"variants":[{"index":1,"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":3,"imagePrompt":"场景图提示词","videoPrompt":"视频镜头提示词","voiceoverText":"对应口播或字幕","module":"行业必备模块"}]}]}。`,
+      `把{industryTitle}广告脚本拆成适合 Seedance 生成的分镜，视频比例 {ratio}，总时长约 {durationSec}s。若总时长超过 15s，请拆为多个连续片段，每段 4-15s，例如 25s 拆为 15s + 10s，并让 shots 的 durationSec 累计接近总时长。每个 videoPrompt 必须写清楚${VIDEO_COMPOSITION_PROMPT}${VIDEO_TEXT_STICKER_PROMPT}脚本：{scriptsJson}。只输出 JSON：{"variants":[{"index":1,"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":3,"imagePrompt":"场景图提示词","videoPrompt":"视频镜头提示词，不包含文字贴纸、花字、字幕或任何可读文字","voiceoverText":"对应口播文本，仅供节奏参考","module":"行业必备模块"}]}]}。`,
   },
   'native.compliance_rewrite': {
     title: '合规改写',
@@ -176,7 +179,7 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '把每条分镜合成为 Seedance 视频生成 Prompt。',
     variables: ['industryTitle', 'title', 'script', 'storyboard', 'ratio'],
     defaultPrompt:
-      `{industryTitle}行业原生爆款广告：{title}\n成片比例：{ratio}\n脚本：{script}\n分镜：\n{storyboard}\n${VIDEO_COMPOSITION_PROMPT}\n要求节奏明确，主体稳定，避免多余文字、水印和品牌 Logo。`,
+      `{industryTitle}行业原生爆款广告：{title}\n成片比例：{ratio}\n脚本：{script}\n分镜：\n{storyboard}\n${VIDEO_COMPOSITION_PROMPT}\n${VIDEO_TEXT_STICKER_PROMPT}\n要求节奏明确，主体稳定，画面中不出现多余文字、水印和品牌 Logo。`,
   },
   'native.consistency_checker': {
     title: '一致性检测',

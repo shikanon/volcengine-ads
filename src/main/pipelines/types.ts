@@ -20,10 +20,12 @@ export interface StepContext<TInput = ExplosionInput | PretrailerInput | AvatarI
   task: TaskRecord;
   input: TInput;
   artifactDir: string;
+  logFilePath?: string;
   repository: TaskRepository;
   modelClient: ModelClient;
   workflowPrompts: WorkflowPromptOverrides;
   emitProgress(event: TaskProgressEvent): void;
+  appendLog?(level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>): Promise<void>;
 }
 
 export interface PipelineStep<TInput = ExplosionInput | PretrailerInput | AvatarInput | NativeInput> {

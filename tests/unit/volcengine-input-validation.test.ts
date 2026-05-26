@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -67,6 +67,24 @@ describe('VolcengineModelClient input validation', () => {
       new VolcengineModelClient(credentials()).tts('测'.repeat(1001), 'voice'),
     ).rejects.toThrow(AppError);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('accepts TTS audio chunks followed by the OK terminal packet', async () => {
+    const audioChunk = Buffer.from('voice-audio').toString('base64');
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () =>
+        [
+          JSON.stringify({ code: 0, message: '', data: audioChunk }),
+          JSON.stringify({ code: 20000000, message: 'OK' }),
+        ].join('\n'),
+    } as never);
+
+    const result = await new VolcengineModelClient(credentials()).tts('语音合成测试', 'voice');
+
+    expect(existsSync(result.localPath)).toBe(true);
+    expect(readFileSync(result.localPath).toString()).toBe('voice-audio');
   });
 
   it('rejects unsupported ASR local audio extensions before upload', async () => {

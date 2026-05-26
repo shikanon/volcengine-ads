@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { getStepNames } from '../../src/main/pipelines/index.js';
 import {
   VIDEO_COMPOSITION_PROMPT,
+  VIDEO_TEXT_STICKER_PROMPT,
   getDefaultWorkflowPrompts,
   type WorkflowPromptId,
 } from '../../src/shared/workflows.js';
@@ -73,6 +74,18 @@ describe('pipeline step contracts', () => {
 
     for (const id of videoPromptIds) {
       expect(prompts[id]).toContain(VIDEO_COMPOSITION_PROMPT);
+    }
+  });
+
+  it('keeps text sticker guidance out of native video generation', () => {
+    const prompts = getDefaultWorkflowPrompts();
+    const nativeVideoPromptIds: WorkflowPromptId[] = [
+      'native.storyboard_builder',
+      'native.asset_generator',
+    ];
+
+    for (const id of nativeVideoPromptIds) {
+      expect(prompts[id]).toContain(VIDEO_TEXT_STICKER_PROMPT);
     }
   });
 });

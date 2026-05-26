@@ -82,7 +82,41 @@ describe('VolcengineModelClient.generateVideo', () => {
       model: 'doubao-seedance-2-0-260128',
       resolution: '720p',
       ratio: 'adaptive',
+      generate_audio: false,
     });
+  });
+
+  it('passes through generateAudio when Seedance audio is required', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
+    const outputPath = join(dir, 'video.mp4');
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'task-id' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ status: 'succeeded', video_url: 'https://ark.invalid/video.mp4' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => Buffer.from('video').buffer,
+      } as never);
+
+    await new VolcengineModelClient(credentials()).generateVideo({
+      prompt: '生成带环境声的原生广告素材',
+      generateAudio: true,
+      outputPath,
+    });
+
+    const createCall = vi.mocked(fetch).mock.calls[0];
+    const init = createCall?.[1] as { body?: string } | undefined;
+    expect(JSON.parse(init?.body ?? '{}')).toMatchObject({ generate_audio: true });
   });
 
   it('normalizes legacy pixel resolution before requesting Seedance', async () => {
@@ -184,6 +218,39 @@ describe('VolcengineModelClient.generateVideo', () => {
     ).rejects.toThrow(AppError);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
+
+  it('includes Seedance task status, task id, and raw error details when generation fails', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
+    const outputPath = join(dir, 'video.mp4');
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ id: `task-${attempt}` }),
+        } as never)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              status: 'failed',
+              error: {
+                code: 'InvalidParameter',
+                type: 'BadRequest',
+                message: 'OK',
+              },
+            }),
+        } as never);
+    }
+
+    await expect(
+      new VolcengineModelClient(credentials()).generateVideo({
+        prompt: '生成前贴',
+        outputPath,
+      }),
+    ).rejects.toThrow(/task_id=task-3.*status=failed.*InvalidParameter.*BadRequest.*raw=/u);
+  }, 15_000);
 
   it('rejects unsupported digital human duration before the network request', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));

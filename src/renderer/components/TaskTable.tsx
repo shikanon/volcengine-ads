@@ -131,6 +131,10 @@ function isPreviewable(path: string): boolean {
   return PREVIEWABLE_EXTENSIONS.has(getExtension(path));
 }
 
+function extractLogPath(logs?: string): string | undefined {
+  return /日志文件：([^\n]+)/u.exec(logs ?? '')?.[1]?.trim();
+}
+
 function TaskStatusCell({ task }: { task: TaskRecord }) {
   return (
     <div className="task-status-cell">
@@ -148,6 +152,7 @@ function StepOutput({ step }: { step: TaskStep }) {
   const { message } = App.useApp();
   const [preview, setPreview] = useState<ArtifactPreview>();
   const [previewLoading, setPreviewLoading] = useState(false);
+  const logPath = extractLogPath(step.logs);
 
   if (!step.artifactPath && !step.logs) {
     return <span className="muted-text">等待输出</span>;
@@ -198,6 +203,51 @@ function StepOutput({ step }: { step: TaskStep }) {
     }
   };
 
+  const revealLog = async () => {
+    if (!logPath) {
+      return;
+    }
+    try {
+      await api.asset.reveal({ path: logPath });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    }
+  };
+
+  const previewLog = async () => {
+    if (!logPath) {
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const result = await api.asset.readText({ path: logPath, maxBytes: 1024 * 1024 });
+      setPreview({
+        path: result.path,
+        title: getFileName(result.path),
+        content: result.content,
+        truncated: result.truncated,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const openPreviewFile = async () => {
+    if (!preview) {
+      return;
+    }
+    try {
+      await api.asset.open({ path: preview.path });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    }
+  };
+
   return (
     <div className="step-output">
       {step.artifactPath ? (
@@ -242,14 +292,37 @@ function StepOutput({ step }: { step: TaskStep }) {
           {step.logs}
         </Typography.Text>
       ) : null}
+      {logPath ? (
+        <Space size={8} wrap>
+          <Tooltip title="查看详细日志">
+            <Button
+              size="small"
+              className="secondary-button icon-button"
+              icon={<EyeOutlined />}
+              aria-label="查看详细日志"
+              loading={previewLoading}
+              onClick={() => void previewLog()}
+            />
+          </Tooltip>
+          <Tooltip title="定位日志文件">
+            <Button
+              size="small"
+              className="secondary-button icon-button"
+              icon={<FolderOpenOutlined />}
+              aria-label="定位日志文件"
+              onClick={() => void revealLog()}
+            />
+          </Tooltip>
+        </Space>
+      ) : null}
       <Modal
         title={preview?.title ?? '节点输出'}
         open={preview !== undefined}
         width={860}
         onCancel={() => setPreview(undefined)}
         footer={[
-          <Button key="open" onClick={() => void openArtifact()}>
-            打开产物
+          <Button key="open" onClick={() => void openPreviewFile()}>
+            打开文件
           </Button>,
           <Button key="close" type="primary" onClick={() => setPreview(undefined)}>
             关闭
