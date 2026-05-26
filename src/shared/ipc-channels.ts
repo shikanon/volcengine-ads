@@ -10,7 +10,9 @@ export const IPC_CHANNELS = {
   },
   asset: {
     list: 'asset:list',
+    open: 'asset:open',
     reveal: 'asset:reveal',
+    readText: 'asset:read-text',
     pickFiles: 'asset:pick-files',
   },
   settings: {

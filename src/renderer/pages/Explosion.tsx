@@ -50,7 +50,7 @@ export function Explosion() {
 
   return (
     <section className="section page-panel">
-      <Space direction="vertical" size={14} className="form-shell">
+      <div className="form-shell">
         <div className="form-header">
           <Typography.Title level={4}>选择爆款素材</Typography.Title>
           <span>从抖音链接或本地视频生成多版本广告变体</span>
@@ -77,18 +77,19 @@ export function Explosion() {
               <Input placeholder="粘贴完整链接、短链或分享口令" />
             </Form.Item>
           ) : (
-            <Form.Item name="sourceVideoPath" label="本地视频" rules={[{ required: true }]}>
-              <Input
-                readOnly
-                addonAfter={
-                  <Button
-                    type="text"
-                    className="icon-button"
-                    icon={<FolderOpenOutlined />}
-                    onClick={() => void pickVideo()}
-                  />
-                }
-              />
+            <Form.Item label="本地视频" required>
+              <Space.Compact className="full-width">
+                <Form.Item name="sourceVideoPath" noStyle rules={[{ required: true }]}>
+                  <Input readOnly />
+                </Form.Item>
+                <Button
+                  type="default"
+                  className="file-picker-button"
+                  icon={<FolderOpenOutlined />}
+                  aria-label="选择本地视频"
+                  onClick={() => void pickVideo()}
+                />
+              </Space.Compact>
             </Form.Item>
           )}
           <Form.Item name="variantCount" label="裂变数量" rules={[{ required: true }]}>
@@ -103,7 +104,7 @@ export function Explosion() {
             创建裂变任务
           </Button>
         </Form>
-      </Space>
+      </div>
     </section>
   );
 }

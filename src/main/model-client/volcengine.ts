@@ -49,6 +49,7 @@ const SEEDANCE_VIDEO_EXTS = new Set(['.mp4', '.mov']);
 const SEEDANCE_AUDIO_EXTS = new Set(['.wav', '.mp3']);
 const ASR_AUDIO_EXTS = new Set(['.wav', '.mp3', '.ogg', '.m4a']);
 const MIB = 1024 * 1024;
+const EMPTY_TRANSCRIPT: TranscriptResult = { text: '', segments: [] };
 
 interface ArkTaskResponse {
   id?: string;
@@ -83,6 +84,15 @@ interface AsrQueryResponse {
     }>;
   };
 }
+
+function isAsrNoSpeech(statusCode: string | null, message: string): boolean {
+  return (
+    statusCode === '20000003' &&
+    /normal silence audio|no valid speech|no speech|silence audio|无有效(?:语音|人声)|静音/iu.test(message)
+  );
+}
+
+type AsrSubmitResult = 'submitted' | 'empty_transcript';
 
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
@@ -643,7 +653,10 @@ export class VolcengineModelClient implements ModelClient {
       pRetry(
         async () => {
           const requestId = randomUUID();
-          await this.submitAsrTask(audioUrl, requestId);
+          const submitResult = await this.submitAsrTask(audioUrl, requestId);
+          if (submitResult === 'empty_transcript') {
+            return EMPTY_TRANSCRIPT;
+          }
           return this.pollAsrTask(requestId);
         },
         { retries: 3, factor: 2 },
@@ -669,7 +682,7 @@ export class VolcengineModelClient implements ModelClient {
     return headers;
   }
 
-  private async submitAsrTask(audioUrl: string, requestId: string): Promise<void> {
+  private async submitAsrTask(audioUrl: string, requestId: string): Promise<AsrSubmitResult> {
     const response = await fetch(
       joinUrl(this.credentials.provider.asrBaseUrl, '/api/v3/auc/bigmodel/submit'),
       {
@@ -695,9 +708,13 @@ export class VolcengineModelClient implements ModelClient {
     }
     const statusCode = response.headers.get('x-api-status-code');
     const message = response.headers.get('x-api-message') ?? 'Unknown';
+    if (isAsrNoSpeech(statusCode, message)) {
+      return 'empty_transcript';
+    }
     if (statusCode !== '20000000') {
       throw new AppError('E_MODEL_API_FAILED', `ASR submit ${statusCode}: ${message}`);
     }
+    return 'submitted';
   }
 
   private async pollAsrTask(requestId: string): Promise<TranscriptResult> {
@@ -719,6 +736,9 @@ export class VolcengineModelClient implements ModelClient {
       if (statusCode === '20000001' || statusCode === '20000002') {
         await sleep(ASR_POLL_INTERVAL_MS);
         continue;
+      }
+      if (isAsrNoSpeech(statusCode, message)) {
+        return EMPTY_TRANSCRIPT;
       }
       if (statusCode === '20000003') {
         throw new AppError('E_MODEL_API_FAILED', `ASR query ${statusCode}: ${message}`);

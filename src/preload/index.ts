@@ -7,6 +7,8 @@ import type {
   CreateTaskRequest,
   OpenPathRequest,
   PickFileRequest,
+  ReadTextRequest,
+  ReadTextResult,
   RetryStepRequest,
   SettingsState,
   SettingsUpdate,
@@ -41,7 +43,10 @@ const api = {
   },
   asset: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.asset.list) as Promise<AssetRecord[]>,
+    open: (request: OpenPathRequest) => ipcRenderer.invoke(IPC_CHANNELS.asset.open, request) as Promise<boolean>,
     reveal: (request: OpenPathRequest) => ipcRenderer.invoke(IPC_CHANNELS.asset.reveal, request) as Promise<boolean>,
+    readText: (request: ReadTextRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.asset.readText, request) as Promise<ReadTextResult>,
     pickFiles: (request: PickFileRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.asset.pickFiles, request) as Promise<string[]>,
   },

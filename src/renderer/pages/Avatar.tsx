@@ -38,7 +38,7 @@ export function Avatar() {
 
   return (
     <section className="section page-panel">
-      <Space direction="vertical" size={14} className="form-shell">
+      <div className="form-shell">
         <div className="form-header">
           <Typography.Title level={4}>配置数字人口播</Typography.Title>
           <span>输入品牌资料和产品图，生成口播成片</span>
@@ -50,18 +50,19 @@ export function Avatar() {
           initialValues={{ duration: 30, productImagePaths: [] }}
           onFinish={(values) => void submit(values)}
         >
-          <Form.Item name="avatarImagePath" label="数字人图片" rules={[{ required: true }]}>
-            <Input
-              readOnly
-              addonAfter={
-                <Button
-                  type="text"
-                  className="icon-button"
-                  icon={<FolderOpenOutlined />}
-                  onClick={() => void pickAvatar()}
-                />
-              }
-            />
+          <Form.Item label="数字人图片" required>
+            <Space.Compact className="full-width">
+              <Form.Item name="avatarImagePath" noStyle rules={[{ required: true }]}>
+                <Input readOnly />
+              </Form.Item>
+              <Button
+                type="default"
+                className="file-picker-button"
+                icon={<FolderOpenOutlined />}
+                aria-label="选择数字人图片"
+                onClick={() => void pickAvatar()}
+              />
+            </Space.Compact>
           </Form.Item>
           <Form.Item name="brandIntro" label="品牌介绍" rules={[{ required: true }]}>
             <Input.TextArea rows={5} />
@@ -84,7 +85,7 @@ export function Avatar() {
             创建口播任务
           </Button>
         </Form>
-      </Space>
+      </div>
     </section>
   );
 }

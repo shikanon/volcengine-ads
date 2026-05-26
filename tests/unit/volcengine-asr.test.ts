@@ -28,7 +28,7 @@ interface MockFetchResponse {
   json(): Promise<unknown>;
 }
 
-function response(statusCode: string, body: unknown = {}): MockFetchResponse {
+function response(statusCode: string, body: unknown = {}, message = 'OK'): MockFetchResponse {
   return {
     ok: true,
     status: 200,
@@ -38,7 +38,7 @@ function response(statusCode: string, body: unknown = {}): MockFetchResponse {
           return statusCode;
         }
         if (name.toLowerCase() === 'x-api-message') {
-          return 'OK';
+          return message;
         }
         return null;
       },
@@ -150,5 +150,74 @@ describe('VolcengineModelClient.asr', () => {
     expect(JSON.parse(init?.body ?? '{}')).toMatchObject({
       audio: { url: 'https://bucket.oss/demo.mp3?Signature=sig' },
     });
+  });
+
+  it('treats normal silence audio as an empty transcript', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(response('20000000') as never)
+      .mockResolvedValueOnce(
+        response(
+          '20000003',
+          {},
+          '[Normal silence audio] Handle response: no valid speech in audio',
+        ) as never,
+      );
+
+    const client = new VolcengineModelClient({
+      asrAppId: 'appid',
+      asrToken: 'token',
+      provider: {
+        seedanceBaseUrl: 'https://ark.invalid',
+        seedanceModel: 'seedance',
+        imageBaseUrl: 'https://ark.invalid',
+        imageModel: 'seedream',
+        llmBaseUrl: 'https://ark.invalid',
+        llmModel: 'doubao',
+        ttsBaseUrl: 'https://speech.invalid',
+        ttsVoice: 'voice',
+        asrBaseUrl: 'https://openspeech.bytedance.com',
+        asrResourceId: 'volc.seedasr.auc',
+        ossEndpoint: '',
+        ossBucketName: '',
+      },
+    });
+
+    await expect(client.asr('https://example.com/silent.wav')).resolves.toEqual({
+      text: '',
+      segments: [],
+    });
+  });
+
+  it('treats submit-stage no speech as an empty transcript without polling', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      response('20000003', {}, 'no valid speech in audio') as never,
+    );
+
+    const client = new VolcengineModelClient({
+      asrAppId: 'appid',
+      asrToken: 'token',
+      provider: {
+        seedanceBaseUrl: 'https://ark.invalid',
+        seedanceModel: 'seedance',
+        imageBaseUrl: 'https://ark.invalid',
+        imageModel: 'seedream',
+        llmBaseUrl: 'https://ark.invalid',
+        llmModel: 'doubao',
+        ttsBaseUrl: 'https://speech.invalid',
+        ttsVoice: 'voice',
+        asrBaseUrl: 'https://openspeech.bytedance.com',
+        asrResourceId: 'volc.seedasr.auc',
+        ossEndpoint: '',
+        ossBucketName: '',
+      },
+    });
+
+    await expect(client.asr('https://example.com/silent.wav')).resolves.toEqual({
+      text: '',
+      segments: [],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -111,6 +111,32 @@ export async function concatWithFade(firstPath: string, secondPath: string, outp
   return outputPath;
 }
 
+export async function concatVideos(videoPaths: string[], outputPath: string): Promise<string> {
+  if (videoPaths.length === 0) {
+    throw new AppError('E_INPUT_VALIDATION', '至少需要 1 段视频用于拼接');
+  }
+  await mkdir(dirname(outputPath), { recursive: true });
+  const command = ffmpeg();
+  for (const videoPath of videoPaths) {
+    command.input(videoPath);
+  }
+  const inputs = videoPaths.map((_videoPath, index) => `[${index}:v][${index}:a]`).join('');
+  await run(
+    command
+      .complexFilter([`${inputs}concat=n=${videoPaths.length}:v=1:a=1[v][a]`])
+      .outputOptions([
+        '-map [v]',
+        '-map [a]',
+        '-c:v libx264',
+        '-c:a aac',
+        '-pix_fmt yuv420p',
+        '-movflags +faststart',
+      ])
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
 export async function overlayProductImages(
   videoPath: string,
   productImagePaths: string[],

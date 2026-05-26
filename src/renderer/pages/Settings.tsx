@@ -1,4 +1,4 @@
-import { Button, Form, Input, InputNumber, Select, Space, Switch, Typography, message } from 'antd';
+import { Button, Form, Input, InputNumber, Select, Switch, Typography, message } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import { useEffect } from 'react';
 
@@ -42,7 +42,7 @@ export function Settings() {
 
   return (
     <section className="section page-panel">
-      <Space direction="vertical" size={14} className="form-shell wide">
+      <div className="form-shell wide">
         <div className="form-header">
           <Typography.Title level={4}>模型服务配置</Typography.Title>
           <span>本地私有化配置会从数据库读取并回填，方便直接检查和修改</span>
@@ -184,7 +184,7 @@ export function Settings() {
             </Button>
           </div>
         </Form>
-      </Space>
+      </div>
     </section>
   );
 }

@@ -22,6 +22,7 @@ export function Assets() {
         className="desktop-table"
         size="small"
         dataSource={assets}
+        scroll={{ x: 760 }}
         locale={{
           emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无产物" />,
         }}

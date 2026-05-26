@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.3.7",
+    "@xyflow/react": "^12.10.2",
     "antd": "^5.21.6",
     "better-sqlite3": "^11.3.0",
     "electron-log": "^5.1.7",
@@ -75,15 +76,38 @@
   "build": {
     "appId": "com.shikanon.volcengine-ads",
     "productName": "AIGC Ads Studio",
+    "icon": "resources/icon",
     "asarUnpack": [
       "node_modules/ffmpeg-static/**"
     ],
     "files": [
       "dist/**",
+      "resources/icon.png",
+      "resources/icon.svg",
+      "resources/icon.icns",
+      "resources/icon.ico",
       "package.json"
     ],
     "directories": {
       "output": "release"
+    },
+    "mac": {
+      "icon": "resources/icon.icns",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "icon": "resources/icon.png",
+      "target": [
+        "AppImage"
+      ]
     }
   }
 }

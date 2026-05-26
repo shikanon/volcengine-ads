@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { getStepNames } from '../../src/main/pipelines/index.js';
+import {
+  VIDEO_COMPOSITION_PROMPT,
+  getDefaultWorkflowPrompts,
+  type WorkflowPromptId,
+} from '../../src/shared/workflows.js';
 
 describe('pipeline step contracts', () => {
   it('keeps explosion steps aligned with spec.md §8.1', () => {
@@ -52,5 +57,22 @@ describe('pipeline step contracts', () => {
       'consistency_checker',
       'composer',
     ]);
+  });
+
+  it('keeps composition guidance in video generation meta prompts', () => {
+    const prompts = getDefaultWorkflowPrompts();
+    const videoPromptIds: WorkflowPromptId[] = [
+      'explosion.rewrite',
+      'explosion.seedance',
+      'pretrailer.script_gen',
+      'pretrailer.seedance',
+      'avatar.seedance_avatar',
+      'native.storyboard_builder',
+      'native.asset_generator',
+    ];
+
+    for (const id of videoPromptIds) {
+      expect(prompts[id]).toContain(VIDEO_COMPOSITION_PROMPT);
+    }
   });
 });

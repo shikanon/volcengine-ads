@@ -21,6 +21,7 @@ function createMainWindow(): BrowserWindow {
     height: 840,
     minWidth: 1024,
     minHeight: 720,
+    icon: join(app.getAppPath(), 'resources/icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

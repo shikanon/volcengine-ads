@@ -52,6 +52,9 @@ export const NATIVE_INDUSTRY_DEFINITIONS: Record<NativeIndustry, NativeIndustryD
   },
 };
 
+export const VIDEO_COMPOSITION_PROMPT =
+  '构图层面：包含构图形式、空间层次、视觉秩序、视觉重心、疏密虚实对比、视线引导与叙事氛围。';
+
 export const WORKFLOW_PROMPT_DEFINITIONS = {
   'explosion.script_parse': {
     title: '脚本解析',
@@ -65,13 +68,13 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '生成新脚本并拆成可用于视频生成的分镜。',
     variables: ['variantCount', 'ctaKeywords', 'transcriptText', 'scriptParseJson'],
     defaultPrompt:
-      '基于原视频理解、原文案与分镜裂变 {variantCount} 条。先生成完整新脚本，再把脚本拆成可用于视频生成的分镜 storyboard。必须保留 CTA 关键词：{ctaKeywords}\n原文案：{transcriptText}\n原片拆解：{scriptParseJson}',
+      `基于原视频理解、原文案与分镜裂变 {variantCount} 条。先生成完整新脚本，再把脚本拆成可用于视频生成的分镜 storyboard。每个 visualPrompt 必须写清楚${VIDEO_COMPOSITION_PROMPT}必须保留 CTA 关键词：{ctaKeywords}\n原文案：{transcriptText}\n原片拆解：{scriptParseJson}`,
   },
   'explosion.seedance': {
     title: '视频生成',
     description: '把裂变脚本和分镜组装成 Seedance 视频生成 Prompt。',
     variables: ['copy', 'script', 'storyboard'],
-    defaultPrompt: '{copy}\n\n完整脚本：{script}\n\n按以下分镜生成视频：\n{storyboard}',
+    defaultPrompt: `{copy}\n\n完整脚本：{script}\n\n按以下分镜生成视频：\n{storyboard}\n\n${VIDEO_COMPOSITION_PROMPT}`,
   },
   'pretrailer.understand': {
     title: '视频理解',
@@ -92,13 +95,13 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '把前贴文案拆成短镜头脚本。',
     variables: ['pretrailerDuration', 'copyText', 'understandingJson'],
     defaultPrompt:
-      '为 {pretrailerDuration}s 广告前贴生成分镜。首镜头必须 <=1 秒。文案：{copyText}。原片理解：{understandingJson}',
+      `为 {pretrailerDuration}s 广告前贴生成分镜。首镜头必须 <=1 秒。每个镜头 prompt 必须写清楚${VIDEO_COMPOSITION_PROMPT}文案：{copyText}。原片理解：{understandingJson}`,
   },
   'pretrailer.seedance': {
     title: '前贴生成',
     description: '把前贴分镜传给视频生成模型。',
     variables: ['scriptJson'],
-    defaultPrompt: '{scriptJson}',
+    defaultPrompt: `{scriptJson}\n\n${VIDEO_COMPOSITION_PROMPT}`,
   },
   'avatar.validate_avatar': {
     title: '数字人校验',
@@ -138,7 +141,7 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     title: '数字人生成',
     description: '控制数字人口播的视频生成风格。',
     variables: [],
-    defaultPrompt: '基于参考音频驱动数字人口播，保持正面构图、自然唇形和轻微表情动作。',
+    defaultPrompt: `基于参考音频驱动数字人口播，保持正面构图、自然唇形和轻微表情动作。${VIDEO_COMPOSITION_PROMPT}`,
   },
   'native.concept_plan': {
     title: '行业概念规划',
@@ -159,7 +162,7 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '把脚本拆成视频生成可用分镜。',
     variables: ['industryTitle', 'ratio', 'scriptsJson', 'durationSec'],
     defaultPrompt:
-      '把{industryTitle}广告脚本拆成适合 Seedance 生成的分镜，视频比例 {ratio}，总时长约 {durationSec}s。脚本：{scriptsJson}。只输出 JSON：{"variants":[{"index":1,"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":3,"imagePrompt":"场景图提示词","videoPrompt":"视频镜头提示词","voiceoverText":"对应口播或字幕","module":"行业必备模块"}]}]}。',
+      `把{industryTitle}广告脚本拆成适合 Seedance 生成的分镜，视频比例 {ratio}，总时长约 {durationSec}s。每个 videoPrompt 必须写清楚${VIDEO_COMPOSITION_PROMPT}脚本：{scriptsJson}。只输出 JSON：{"variants":[{"index":1,"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":3,"imagePrompt":"场景图提示词","videoPrompt":"视频镜头提示词","voiceoverText":"对应口播或字幕","module":"行业必备模块"}]}]}。`,
   },
   'native.compliance_rewrite': {
     title: '合规改写',
@@ -173,7 +176,7 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '把每条分镜合成为 Seedance 视频生成 Prompt。',
     variables: ['industryTitle', 'title', 'script', 'storyboard', 'ratio'],
     defaultPrompt:
-      '{industryTitle}行业原生爆款广告：{title}\n成片比例：{ratio}\n脚本：{script}\n分镜：\n{storyboard}\n要求节奏明确，主体稳定，避免多余文字、水印和品牌 Logo。',
+      `{industryTitle}行业原生爆款广告：{title}\n成片比例：{ratio}\n脚本：{script}\n分镜：\n{storyboard}\n${VIDEO_COMPOSITION_PROMPT}\n要求节奏明确，主体稳定，避免多余文字、水印和品牌 Logo。`,
   },
   'native.consistency_checker': {
     title: '一致性检测',

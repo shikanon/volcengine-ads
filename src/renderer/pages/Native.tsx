@@ -72,7 +72,7 @@ export function Native() {
 
   return (
     <section className="section page-panel">
-      <Space direction="vertical" size={14} className="form-shell wide">
+      <div className="form-shell wide">
         <div className="form-header">
           <div>
             <Typography.Title level={4}>创建原生爆款素材</Typography.Title>
@@ -106,25 +106,25 @@ export function Native() {
               <InputNumber min={1} max={5} className="number-input" />
             </Form.Item>
             <Form.Item name="durationSec" label="目标时长" rules={[{ required: true }]}>
-              <InputNumber min={bounds.min} max={bounds.max} addonAfter="秒" className="number-input" />
+              <InputNumber min={bounds.min} max={bounds.max} suffix="秒" className="number-input" />
             </Form.Item>
           </div>
           <Form.Item name="ratio" label="视频比例" rules={[{ required: true }]}>
             <Radio.Group optionType="button" buttonStyle="solid" options={RATIO_OPTIONS} />
           </Form.Item>
-          <Form.Item name="referenceVideoPath" label="参考视频">
-            <Input
-              readOnly
-              placeholder="可选，用于保持画面风格或产品上下文"
-              addonAfter={
-                <Button
-                  type="text"
-                  className="icon-button"
-                  icon={<FolderOpenOutlined />}
-                  onClick={() => void pickReferenceVideo()}
-                />
-              }
-            />
+          <Form.Item label="参考视频">
+            <Space.Compact className="full-width">
+              <Form.Item name="referenceVideoPath" noStyle>
+                <Input readOnly placeholder="可选，用于保持画面风格或产品上下文" />
+              </Form.Item>
+              <Button
+                type="default"
+                className="file-picker-button"
+                icon={<FolderOpenOutlined />}
+                aria-label="选择参考视频"
+                onClick={() => void pickReferenceVideo()}
+              />
+            </Space.Compact>
           </Form.Item>
           <Form.Item name="brief" label="创意简报" rules={[{ required: true, min: 10 }]}>
             <Input.TextArea
@@ -143,7 +143,7 @@ export function Native() {
             创建原生爆款任务
           </Button>
         </Form>
-      </Space>
+      </div>
     </section>
   );
 }

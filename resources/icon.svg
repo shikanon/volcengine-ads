@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="AIGC Ads Studio">
+  <defs>
+    <linearGradient id="surface" x1="176" y1="104" x2="848" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#43b69a"/>
+      <stop offset="0.62" stop-color="#2f7c68"/>
+      <stop offset="1" stop-color="#245f52"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="274" y1="246" x2="740" y2="778" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f9fbf7"/>
+      <stop offset="1" stop-color="#dcece5"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="34" flood-color="#14362f" flood-opacity="0.26"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#surface)"/>
+  <path d="M220 726 400 300c21-50 68-82 122-82s101 32 122 82l180 426h-127l-34-86H381l-34 86H220Z" fill="url(#plate)" filter="url(#shadow)"/>
+  <path d="M426 524h192l-76-192c-8-20-34-20-42 0l-74 192Z" fill="#2f7c68"/>
+  <path d="M430 618h185l-42 108H388l42-108Z" fill="#f9fbf7"/>
+  <path d="M530 414c0-28 31-45 55-30l112 70c24 15 24 50 0 65l-112 70c-24 15-55-2-55-30V414Z" fill="#43b69a"/>
+  <path d="M260 512c0-139 113-252 252-252 62 0 119 22 163 59" fill="none" stroke="#f9fbf7" stroke-width="36" stroke-linecap="round" opacity="0.72"/>
+  <path d="M764 512c0 139-113 252-252 252-62 0-119-22-163-59" fill="none" stroke="#15372f" stroke-width="36" stroke-linecap="round" opacity="0.2"/>
+  <circle cx="259" cy="512" r="32" fill="#f9fbf7"/>
+  <circle cx="765" cy="512" r="32" fill="#d8eee7"/>
+</svg>

@@ -1,7 +1,10 @@
-import { App, Button, Empty, Popconfirm, Progress, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { useState } from 'react';
+import { App, Button, Empty, Modal, Popconfirm, Progress, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import {
   CopyOutlined,
   DeleteOutlined,
+  ExportOutlined,
+  EyeOutlined,
   FolderOpenOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -82,11 +85,21 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
 interface TaskTableProps {
   tasks: TaskRecord[];
   pageSize?: number;
+  emptyDescription?: string;
 }
 
 interface StepRow extends TaskStep {
   index: number;
 }
+
+interface ArtifactPreview {
+  path: string;
+  title: string;
+  content: string;
+  truncated: boolean;
+}
+
+const PREVIEWABLE_EXTENSIONS = new Set(['csv', 'json', 'log', 'md', 'srt', 'txt', 'vtt']);
 
 function formatTime(value?: number): string {
   if (value === undefined) {
@@ -103,24 +116,123 @@ function getStepLabel(taskType: TaskType, step: string): string {
   return STEP_LABELS[taskType][step] ?? step;
 }
 
+function getFileName(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+function getExtension(path: string): string {
+  const fileName = getFileName(path);
+  const index = fileName.lastIndexOf('.');
+  return index > -1 ? fileName.slice(index + 1).toLowerCase() : '';
+}
+
+function isPreviewable(path: string): boolean {
+  return PREVIEWABLE_EXTENSIONS.has(getExtension(path));
+}
+
+function TaskStatusCell({ task }: { task: TaskRecord }) {
+  return (
+    <div className="task-status-cell">
+      <Tag className={`status-tag ${task.status}`}>{TASK_STATUS_LABEL[task.status]}</Tag>
+      {task.error ? (
+        <Typography.Text className="task-error" ellipsis={{ tooltip: task.error }}>
+          {task.error}
+        </Typography.Text>
+      ) : null}
+    </div>
+  );
+}
+
 function StepOutput({ step }: { step: TaskStep }) {
+  const { message } = App.useApp();
+  const [preview, setPreview] = useState<ArtifactPreview>();
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   if (!step.artifactPath && !step.logs) {
     return <span className="muted-text">等待输出</span>;
   }
+
+  const openArtifact = async () => {
+    if (!step.artifactPath) {
+      return;
+    }
+    try {
+      await api.asset.open({ path: step.artifactPath });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    }
+  };
+
+  const revealArtifact = async () => {
+    if (!step.artifactPath) {
+      return;
+    }
+    try {
+      await api.asset.reveal({ path: step.artifactPath });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    }
+  };
+
+  const previewArtifact = async () => {
+    if (!step.artifactPath) {
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const result = await api.asset.readText({ path: step.artifactPath });
+      setPreview({
+        path: result.path,
+        title: getFileName(result.path),
+        content: result.content,
+        truncated: result.truncated,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   return (
     <div className="step-output">
       {step.artifactPath ? (
         <Space size={8} wrap>
-          <Typography.Text className="path-text" ellipsis={{ tooltip: step.artifactPath }}>
-            {step.artifactPath}
+          <Typography.Text className="artifact-name" ellipsis={{ tooltip: step.artifactPath }}>
+            {getFileName(step.artifactPath)}
           </Typography.Text>
+          {isPreviewable(step.artifactPath) ? (
+            <Tooltip title="预览节点输出">
+              <Button
+                size="small"
+                className="secondary-button icon-button"
+                icon={<EyeOutlined />}
+                aria-label="预览节点输出"
+                loading={previewLoading}
+                onClick={() => void previewArtifact()}
+              />
+            </Tooltip>
+          ) : null}
+          <Tooltip title="打开产物">
+            <Button
+              size="small"
+              className="secondary-button icon-button"
+              icon={<ExportOutlined />}
+              aria-label="打开产物"
+              onClick={() => void openArtifact()}
+            />
+          </Tooltip>
           <Tooltip title="在文件管理器中定位">
             <Button
               size="small"
               className="secondary-button icon-button"
               icon={<FolderOpenOutlined />}
-              onClick={() => void api.asset.reveal({ path: step.artifactPath ?? '' })}
+              aria-label="在文件管理器中定位"
+              onClick={() => void revealArtifact()}
             />
           </Tooltip>
         </Space>
@@ -130,6 +242,34 @@ function StepOutput({ step }: { step: TaskStep }) {
           {step.logs}
         </Typography.Text>
       ) : null}
+      <Modal
+        title={preview?.title ?? '节点输出'}
+        open={preview !== undefined}
+        width={860}
+        onCancel={() => setPreview(undefined)}
+        footer={[
+          <Button key="open" onClick={() => void openArtifact()}>
+            打开产物
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setPreview(undefined)}>
+            关闭
+          </Button>,
+        ]}
+      >
+        {preview ? (
+          <div className="artifact-preview-wrap">
+            <Typography.Text className="artifact-preview-path" ellipsis={{ tooltip: preview.path }}>
+              {preview.path}
+            </Typography.Text>
+            {preview.truncated ? (
+              <Typography.Text className="artifact-preview-note">
+                文件较大，仅展示前 512KB 内容。
+              </Typography.Text>
+            ) : null}
+            <pre className="artifact-preview">{preview.content}</pre>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -197,6 +337,7 @@ function WorkflowSteps({ task, onRetryStep }: { task: TaskRecord; onRetryStep(st
                   size="small"
                   className="secondary-button icon-button"
                   icon={<ReloadOutlined />}
+                  aria-label={`从${getStepLabel(task.type, step.step)}重新执行后续流程`}
                   disabled={task.status === 'running' || task.status === 'queued'}
                   onClick={() => onRetryStep(step.id)}
                 />
@@ -209,7 +350,7 @@ function WorkflowSteps({ task, onRetryStep }: { task: TaskRecord; onRetryStep(st
   );
 }
 
-export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
+export function TaskTable({ tasks, pageSize = 8, emptyDescription = '暂无任务' }: TaskTableProps) {
   const { message } = App.useApp();
   const { retryTask, retryStep, cancelTask, deleteTask, cloneTask } = useTasksStore();
 
@@ -229,6 +370,7 @@ export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
       className="desktop-table"
       size="small"
       dataSource={tasks}
+      scroll={{ x: 720 }}
       pagination={{ pageSize }}
       expandable={{
         rowExpandable: (record) => record.steps.length > 0,
@@ -242,7 +384,7 @@ export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
         ),
       }}
       locale={{
-        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无任务" />,
+        emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyDescription} />,
       }}
       columns={[
         {
@@ -255,9 +397,7 @@ export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
           title: '状态',
           dataIndex: 'status',
           width: 130,
-          render: (status: TaskRecord['status']) => (
-            <Tag className={`status-tag ${status}`}>{TASK_STATUS_LABEL[status]}</Tag>
-          ),
+          render: (_, record) => <TaskStatusCell task={record} />,
         },
         {
           title: '进度',
@@ -282,6 +422,7 @@ export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
                       size="small"
                       className="secondary-button icon-button"
                       icon={<ReloadOutlined />}
+                      aria-label="重新执行任务"
                       onClick={() => void runTaskAction(() => retryTask(record.id), '任务已重新入队')}
                     />
                   </Tooltip>
@@ -301,6 +442,7 @@ export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
                         size="small"
                         className="secondary-button icon-button"
                         icon={<StopOutlined />}
+                        aria-label="取消任务"
                       />
                     </Tooltip>
                   </Popconfirm>
@@ -310,6 +452,7 @@ export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
                     size="small"
                     className="secondary-button icon-button"
                     icon={<CopyOutlined />}
+                    aria-label="克隆为新任务"
                     onClick={() => void runTaskAction(() => cloneTask(record.id), '任务已克隆')}
                   />
                 </Tooltip>
@@ -327,6 +470,7 @@ export function TaskTable({ tasks, pageSize = 8 }: TaskTableProps) {
                       size="small"
                       className="icon-button"
                       icon={<DeleteOutlined />}
+                      aria-label={canDelete ? '删除任务' : '运行中的任务请先取消'}
                       disabled={!canDelete}
                     />
                   </Tooltip>

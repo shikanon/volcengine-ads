@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   App as AntApp,
   ConfigProvider,
@@ -14,7 +15,6 @@ import {
   PlayCircleOutlined,
   RocketOutlined,
   SettingOutlined,
-  SoundOutlined,
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -55,6 +55,17 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
   settings: '模型、存储与本地安全',
 };
 
+const NAV_ITEMS: Array<{ key: PageKey; icon: ReactNode; label: string }> = [
+  { key: 'home', icon: <HomeOutlined />, label: '工作台' },
+  { key: 'explosion', icon: <ThunderboltOutlined />, label: '广告爆款素材裂变' },
+  { key: 'native', icon: <RocketOutlined />, label: '原生爆款素材生成' },
+  { key: 'pretrailer', icon: <PlayCircleOutlined />, label: '广告吸引前贴生成' },
+  { key: 'avatar', icon: <UserOutlined />, label: '广告数字人口播' },
+  { key: 'workflows', icon: <ApartmentOutlined />, label: '工作流' },
+  { key: 'assets', icon: <AppstoreOutlined />, label: '素材库' },
+  { key: 'settings', icon: <SettingOutlined />, label: '设置' },
+];
+
 function RecentTasks() {
   const { tasks } = useTasksStore();
   return <TaskTable tasks={tasks} pageSize={6} />;
@@ -84,18 +95,18 @@ export function App() {
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: '#2f7c68',
-          colorInfo: '#4779a8',
-          colorSuccess: '#3c875d',
-          colorWarning: '#b57b1f',
-          colorError: '#b6493f',
-          colorText: '#293430',
-          colorTextSecondary: '#68736f',
-          colorBgBase: '#f4f6f3',
-          colorBgContainer: '#fdfdfb',
-          colorBorder: '#dce3df',
+          colorPrimary: 'oklch(0.48 0.08 168)',
+          colorInfo: 'oklch(0.52 0.085 238)',
+          colorSuccess: 'oklch(0.47 0.075 150)',
+          colorWarning: 'oklch(0.56 0.105 84)',
+          colorError: 'oklch(0.54 0.13 28)',
+          colorText: 'oklch(0.32 0.012 170)',
+          colorTextSecondary: 'oklch(0.52 0.012 170)',
+          colorBgBase: 'oklch(0.965 0.006 170)',
+          colorBgContainer: 'oklch(0.998 0.002 170)',
+          colorBorder: 'oklch(0.875 0.012 170)',
           borderRadius: 8,
-          fontSize: 14,
+          fontSize: 15,
           fontFamily:
             '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif',
         },
@@ -104,13 +115,8 @@ export function App() {
       <AntApp>
         <Layout className="app-shell">
           <Layout.Sider width={232} className="sidebar">
-            <div className="window-dots" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
             <div className="brand-lockup">
-              <div className="brand-mark">A</div>
+              <div className="brand-mark" aria-hidden="true" />
               <div>
                 <Typography.Title level={4} className="brand">
                   AIGC Ads Studio
@@ -123,16 +129,7 @@ export function App() {
               selectedKeys={[page]}
               className="side-menu"
               onClick={(item) => setPage(item.key as PageKey)}
-              items={[
-                { key: 'home', icon: <HomeOutlined />, label: '工作台' },
-                { key: 'explosion', icon: <ThunderboltOutlined />, label: '爆款裂变' },
-                { key: 'native', icon: <RocketOutlined />, label: '原生爆款' },
-                { key: 'pretrailer', icon: <PlayCircleOutlined />, label: '广告前贴' },
-                { key: 'avatar', icon: <UserOutlined />, label: '数字人口播' },
-                { key: 'workflows', icon: <ApartmentOutlined />, label: '工作流' },
-                { key: 'assets', icon: <AppstoreOutlined />, label: '素材库' },
-                { key: 'settings', icon: <SettingOutlined />, label: '设置' },
-              ]}
+              items={NAV_ITEMS}
             />
             <div className="sidebar-footer">
               <ClockCircleOutlined />
@@ -145,11 +142,24 @@ export function App() {
                 <Typography.Title level={2}>{PAGE_TITLES[page]}</Typography.Title>
                 <span>{PAGE_SUBTITLES[page]}</span>
               </div>
-              <div className="toolbar-pill">
-                <SoundOutlined />
+              <div className="toolbar-pill" aria-live="polite">
+                <ClockCircleOutlined />
                 <span>{tasks.filter((task) => task.status === 'running').length} 运行中</span>
               </div>
             </Layout.Header>
+            <nav className="compact-nav" aria-label="页面导航">
+              {NAV_ITEMS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-current={page === item.key ? 'page' : undefined}
+                  onClick={() => setPage(item.key)}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </nav>
             <Layout.Content className="content">
               {content}
               {page !== 'home' ? (

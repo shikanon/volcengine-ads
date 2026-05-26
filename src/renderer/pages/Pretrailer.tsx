@@ -32,7 +32,7 @@ export function Pretrailer() {
 
   return (
     <section className="section page-panel">
-      <Space direction="vertical" size={14} className="form-shell">
+      <div className="form-shell">
         <div className="form-header">
           <Typography.Title level={4}>选择原广告视频</Typography.Title>
           <span>自动生成开场钩子并拼接到原片前</span>
@@ -44,18 +44,19 @@ export function Pretrailer() {
           initialValues={{ pretrailerDuration: 7, style: 'auto' }}
           onFinish={(values) => void submit(values)}
         >
-          <Form.Item name="sourceVideoPath" label="原广告视频" rules={[{ required: true }]}>
-            <Input
-              readOnly
-              addonAfter={
-                <Button
-                  type="text"
-                  className="icon-button"
-                  icon={<FolderOpenOutlined />}
-                  onClick={() => void pickVideo()}
-                />
-              }
-            />
+          <Form.Item label="原广告视频" required>
+            <Space.Compact className="full-width">
+              <Form.Item name="sourceVideoPath" noStyle rules={[{ required: true }]}>
+                <Input readOnly />
+              </Form.Item>
+              <Button
+                type="default"
+                className="file-picker-button"
+                icon={<FolderOpenOutlined />}
+                aria-label="选择原广告视频"
+                onClick={() => void pickVideo()}
+              />
+            </Space.Compact>
           </Form.Item>
           <Form.Item name="pretrailerDuration" label="前贴时长">
             <InputNumber min={5} max={10} className="number-input" />
@@ -75,7 +76,7 @@ export function Pretrailer() {
             创建前贴任务
           </Button>
         </Form>
-      </Space>
+      </div>
     </section>
   );
 }

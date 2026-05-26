@@ -156,6 +156,17 @@ export interface OpenPathRequest {
   path: string;
 }
 
+export interface ReadTextRequest {
+  path: string;
+  maxBytes?: number;
+}
+
+export interface ReadTextResult {
+  path: string;
+  content: string;
+  truncated: boolean;
+}
+
 export interface PickFileRequest {
   filters: Array<{ name: string; extensions: string[] }>;
   multi?: boolean;

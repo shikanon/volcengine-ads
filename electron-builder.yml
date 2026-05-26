@@ -1,18 +1,26 @@
 appId: com.shikanon.volcengine-ads
 productName: AIGC Ads Studio
+icon: resources/icon
 directories:
   output: release
 asarUnpack:
   - node_modules/ffmpeg-static/**
 files:
   - dist/**
+  - resources/icon.png
+  - resources/icon.svg
+  - resources/icon.icns
+  - resources/icon.ico
   - package.json
 mac:
+  icon: resources/icon.icns
   target:
     - dmg
 win:
+  icon: resources/icon.ico
   target:
     - nsis
 linux:
+  icon: resources/icon.png
   target:
     - AppImage
