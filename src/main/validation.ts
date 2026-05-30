@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs';
 
 import { AppError } from './errors.js';
 import {
+  DEFAULT_VIDEO_RESOLUTION,
   PRETRAILER_VIDEO_TYPE_DEFINITIONS,
+  VIDEO_RESOLUTION_OPTIONS,
   normalizePretrailerStyle,
 } from '../shared/types.js';
 import type {
@@ -13,6 +15,7 @@ import type {
   NativeInput,
   NativeRatio,
   PretrailerInput,
+  VideoResolution,
 } from '../shared/types.js';
 
 const NATIVE_INDUSTRIES: readonly NativeIndustry[] = [
@@ -42,6 +45,19 @@ function requireNumber(value: unknown, field: string): number {
   return value;
 }
 
+function normalizeVideoResolution(value: unknown): VideoResolution {
+  if (value === undefined || value === null || value === '') {
+    return DEFAULT_VIDEO_RESOLUTION;
+  }
+  if (
+    typeof value === 'string' &&
+    VIDEO_RESOLUTION_OPTIONS.some((option) => option.value === value)
+  ) {
+    return value as VideoResolution;
+  }
+  throw new AppError('E_INPUT_VALIDATION', '视频分辨率只支持 480P、720P、1080P');
+}
+
 function validateExplosion(input: unknown): ExplosionInput {
   if (!isRecord(input)) {
     throw new AppError('E_INPUT_VALIDATION', '爆款裂变输入格式错误');
@@ -62,9 +78,10 @@ function validateExplosion(input: unknown): ExplosionInput {
   if (variantCount < 1 || variantCount > 10) {
     throw new AppError('E_INPUT_VALIDATION', '裂变数量必须在 1..10');
   }
+  const resolution = normalizeVideoResolution(input.resolution);
   return sourceVideoPath.length > 0
-    ? { sourceVideoPath, variantCount }
-    : { douyinUrl, variantCount };
+    ? { sourceVideoPath, variantCount, resolution }
+    : { douyinUrl, variantCount, resolution };
 }
 
 function validatePretrailer(input: unknown): PretrailerInput {
@@ -86,7 +103,12 @@ function validatePretrailer(input: unknown): PretrailerInput {
   ) {
     throw new AppError('E_INPUT_VALIDATION', '广告前贴视频生成类型不支持');
   }
-  return { sourceVideoPath, pretrailerDuration, style: normalizePretrailerStyle(style) };
+  return {
+    sourceVideoPath,
+    pretrailerDuration,
+    style: normalizePretrailerStyle(style),
+    resolution: normalizeVideoResolution(input.resolution),
+  };
 }
 
 function validateAvatar(input: unknown): AvatarInput {
@@ -121,7 +143,13 @@ function validateAvatar(input: unknown): AvatarInput {
   if (duration < 15 || duration > 60) {
     throw new AppError('E_INPUT_VALIDATION', '视频时长必须在 15..60 秒');
   }
-  return { avatarImagePath, brandIntro, productImagePaths, duration };
+  return {
+    avatarImagePath,
+    brandIntro,
+    productImagePaths,
+    duration,
+    resolution: normalizeVideoResolution(input.resolution),
+  };
 }
 
 function validateNative(input: unknown): NativeInput {
@@ -172,6 +200,7 @@ function validateNative(input: unknown): NativeInput {
     variantCount,
     durationSec,
     ratio: ratio as NativeRatio,
+    resolution: normalizeVideoResolution(input.resolution),
   };
 }
 

@@ -119,6 +119,89 @@ describe('VolcengineModelClient.generateVideo', () => {
     expect(JSON.parse(init?.body ?? '{}')).toMatchObject({ generate_audio: true });
   });
 
+  it('passes through generateAudio for digital human generation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
+    const imagePath = join(dir, 'avatar.png');
+    const audioPath = join(dir, 'speech.mp3');
+    const outputPath = join(dir, 'avatar.mp4');
+    writeFileSync(imagePath, pngHeader(720, 1280));
+    writeFileSync(audioPath, Buffer.from('audio'));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'task-id' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ status: 'succeeded', video_url: 'https://ark.invalid/avatar.mp4' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => Buffer.from('video').buffer,
+      } as never);
+
+    await new VolcengineModelClient(credentials()).generateDigitalHuman({
+      avatarImagePath: imagePath,
+      audioPath,
+      generateAudio: true,
+      outputPath,
+    });
+
+    const createCall = vi.mocked(fetch).mock.calls[0];
+    const init = createCall?.[1] as { body?: string } | undefined;
+    expect(JSON.parse(init?.body ?? '{}')).toMatchObject({ generate_audio: true });
+  });
+
+  it('passes reference audio content to Seedance when provided', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
+    const audioPath = join(dir, 'voice.mp3');
+    const outputPath = join(dir, 'video.mp4');
+    writeFileSync(audioPath, Buffer.from('audio'));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'task-id' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ status: 'succeeded', video_url: 'https://ark.invalid/video.mp4' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => Buffer.from('video').buffer,
+      } as never);
+
+    await new VolcengineModelClient(credentials()).generateVideo({
+      prompt: '根据口播生成广告画面',
+      audioPath,
+      outputPath,
+    });
+
+    const createCall = vi.mocked(fetch).mock.calls[0];
+    const init = createCall?.[1] as { body?: string } | undefined;
+    const body = JSON.parse(init?.body ?? '{}') as {
+      content?: Array<{ type?: string; role?: string }>;
+    };
+    expect(body.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'audio_url',
+          role: 'reference_audio',
+        }),
+      ]),
+    );
+  });
+
   it('passes through Seedance ratio when provided by the pipeline', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
     const outputPath = join(dir, 'video.mp4');

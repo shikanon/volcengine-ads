@@ -20,6 +20,15 @@ export type StepStatus =
 export type AssetKind = 'video' | 'audio' | 'image' | 'script' | 'report';
 export type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool' | 'ecommerce';
 export type NativeRatio = '9:16' | '16:9' | '1:1';
+export type VideoResolution = '480p' | '720p' | '1080p';
+
+export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = '720p';
+
+export const VIDEO_RESOLUTION_OPTIONS: Array<{ value: VideoResolution; label: string }> = [
+  { value: '480p', label: '480P' },
+  { value: '720p', label: '720P' },
+  { value: '1080p', label: '1080P' },
+];
 
 export const SUPPORTED_TTS_SPEAKERS = [
   'zh_female_vv_uranus_bigtts',
@@ -62,6 +71,7 @@ export interface ExplosionInput {
   douyinUrl?: string;
   sourceVideoPath?: string;
   variantCount: number;
+  resolution?: VideoResolution;
 }
 
 export const PRETRAILER_VIDEO_TYPE_DEFINITIONS = [
@@ -161,6 +171,7 @@ export interface PretrailerInput {
   sourceVideoPath: string;
   pretrailerDuration: number;
   style: PretrailerStyle;
+  resolution?: VideoResolution;
 }
 
 export interface AvatarInput {
@@ -168,6 +179,7 @@ export interface AvatarInput {
   brandIntro: string;
   productImagePaths: string[];
   duration: number;
+  resolution?: VideoResolution;
 }
 
 export interface NativeInput {
@@ -178,6 +190,7 @@ export interface NativeInput {
   variantCount: number;
   durationSec: number;
   ratio: NativeRatio;
+  resolution?: VideoResolution;
 }
 
 export interface AssetRecord {
@@ -262,6 +275,7 @@ export interface TaskProgressEvent {
   progress: number;
   step?: string;
   message?: string;
+  artifactPath?: string;
 }
 
 export interface CreateTaskRequest {

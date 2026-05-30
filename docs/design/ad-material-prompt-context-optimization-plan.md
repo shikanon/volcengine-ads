@@ -34,10 +34,49 @@
 
 | 模块 | 当前工作流 | 主要优化点 |
 |---|---|---|
-| `explosion` | `download -> normalize -> script_parse -> rewrite -> seedance -> audio_replace -> register` | 从“相似复刻”升级为“爆款结构解构 + 裂变策略选择 + 同质化规避”。 |
-| `pretrailer` | `normalize -> understand -> copy_gen -> script_gen -> seedance -> concat -> mux_pretrailer -> register` | 强化 1 秒钩子、行业化前贴方向、尾帧衔接原片。 |
-| `native` | `industry_router -> concept_planner -> script_writer -> storyboard_builder -> compliance_pre -> asset_generator -> consistency_checker -> composer` | 固化六行业素材公式，让每个节点产出投放素材而不是泛视频。 |
-| `avatar` | `validate_avatar -> image_generation -> product_understand -> brand_parse -> script_gen -> seedance_avatar -> mux_audio -> register` | 从普通数字人口播升级为转化型口播，支持贴片、画中画、单人出镜策略。 |
+| `explosion` | `download -> asr -> script_parse -> rewrite -> script_confirm -> seedance -> audio_replace` | 从“相似复刻”升级为“爆款结构解构 + 裂变策略选择 + 同质化规避”。 |
+| `pretrailer` | `ingest -> understand -> copy_gen -> script_gen -> script_confirm -> seedance -> tts -> mux_pretrailer -> concat` | 强化 1 秒钩子、行业化前贴方向、尾帧衔接原片。 |
+| `native` | `industry_router -> concept_planner -> script_writer -> script_confirm -> storyboard_builder -> compliance_pre -> asset_generator -> consistency_checker -> composer` | 固化六行业素材公式，让每个节点产出投放素材而不是泛视频。 |
+| `avatar` | `validate_avatar -> product_understand -> brand_parse -> script_gen -> script_confirm -> tts -> seedance_avatar -> overlay -> postprocess` | 从普通数字人口播升级为转化型口播，支持贴片、画中画、单人出镜策略。 |
+
+## 落地状态
+
+更新时间：2026-05-30
+
+| 模块 | 状态 | 代码位置 | 说明 |
+|---|---|---|---|
+| 公共 Prompt 契约 | 已完成 | `src/shared/workflows.ts` | 新增 `PRIVATE_REASONING_PROMPT`、`SEEDANCE_VC_ROUTER_PROMPT`、`REFERENCE_POLICY_PROMPT`、`SEEDANCE_PROMPT_CARD_PROMPT`、`AD_QUALITY_RUBRIC_PROMPT` 和模板版本 `2026-05-30-seedance-router-v1`。 |
+| Context / Prompt helper | 已完成 | `src/main/pipelines/helpers.ts` | 新增 `buildReferencePolicyText` 与 `buildSeedancePromptCard`，统一生成参考素材策略和 SeedancePromptCard。 |
+| `explosion` | 已完成 | `src/main/pipelines/explosion/index.ts` | `script_parse` / `rewrite` Prompt 支持高价值片段、可替换片段、裂变策略和差异化目标；`seedance` 动态注入参考策略，参考视频被拒时改用无参考 Prompt。 |
+| `pretrailer` | 已完成 | `src/main/pipelines/pretrailer/index.ts` | 支持多候选 hook、首秒视觉钩子、尾帧衔接、SeedancePromptCard 和无关键帧参考生成。 |
+| `native` | 已完成 | `src/main/pipelines/native/index.ts` | 概念、脚本、分镜、生成和质检均加入行业公式、私有分析、参考策略、SeedancePromptCard 和修复 Prompt 字段。 |
+| `avatar` | 已完成 | `src/main/pipelines/avatar/index.ts` | 产品理解、品牌解析、转化型口播、数字人口播场景类型、音频/唇形硬约束和产品露出策略已接入。 |
+| ModelClient reasoning options | 已完成 | `src/main/model-client/index.ts`、`src/main/model-client/volcengine.ts` | `chat` / `vision` / `visionVideo` 支持 `reasoningEffort` 选项透传入口；当前厂商不强行发送未知字段，默认仍通过 Prompt 约束内部分析。 |
+| 工作流 UI | 已完成 | `src/renderer/pages/Workflows.tsx`、`src/renderer/styles.css` | Prompt 检查器展示模板版本、内部分析、Seedance Router、参考策略和质量 Rubric。 |
+| 真实 smoke fallback | 已完成 | `scripts/live-volcengine-smoke.mjs` | Native smoke 支持 `LIVE_SMOKE_NATIVE_INDUSTRY` 单行业重跑；参考视频安全拒绝或下载失败时自动无参考重试，并在提交 Seedance 前清洗可读文字/字幕/Logo 指令。 |
+
+### 验证记录
+
+| 验证项 | 结果 | 说明 |
+|---|---|---|
+| `npm run typecheck` | 通过 | TypeScript 严格模式通过。 |
+| `npm run lint` | 通过 | ESLint 通过。 |
+| `npm test` | 通过 | 17 个测试文件、68 个测试全部通过。 |
+| `npm run test:live:chat` | 通过 | 真实 LLM smoke 通过。 |
+| `npm run test:live:features` | 通过 | 爆款裂变、广告前贴、数字人口播真实链路通过；爆款裂变覆盖参考视频被安全策略拒绝后的无参考 fallback。 |
+| `npm run test:live:native` | 部分后修复通过 | 全量 native smoke 覆盖多行业真实链路；测试中暴露了参考视频 URL 下载失败和小说行业可读文字/字幕生成风险。 |
+| `LIVE_SMOKE_NATIVE_INDUSTRY=ecommerce npm run test:live:native` | 通过 | 修复参考视频不可用 fallback 后，电商行业真实 smoke 通过。 |
+| `LIVE_SMOKE_NATIVE_INDUSTRY=novel npm run test:live:native` | 通过 | 补充 live smoke 可读文字清洗和禁文字提示后，小说行业真实 smoke 通过。 |
+| `npm run build` | 通过 | Vite 构建和 electron-builder `--dir` 打包通过；仅有常规 chunk size 与 macOS 签名提示。 |
+
+### 未完成项与 Mock 审计
+
+`src/`、`scripts/`、`docs/` 扫描了 `TODO`、`FIXME`、`mock`、`stub`、`fake`、`placeholder`、`未完成`、`待实现`、`临时`、`hardcoded`、`写死`。结论：
+
+- 未发现生产代码中残留 mock/stub/fake 实现。
+- 命中的 `placeholder` 均为前端输入框占位文案。
+- `src/main/pipelines/codex-diagnosis.ts` 中的“Codex 诊断未完成”是失败诊断报告标题，不是未开发模块。
+- 单测中的 mock 仅用于隔离外部 API 和 FFmpeg，符合测试要求。
 
 ## 总体优化原则
 

@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
@@ -23,6 +24,16 @@ if (ffmpegPath !== undefined) {
   ffmpeg.setFfmpegPath(ffmpegPath);
 }
 
+interface MediaInfo {
+  hasAudio: boolean;
+  durationSec?: number;
+}
+
+export interface AudioConcatSegment {
+  audioPath?: string;
+  durationSec: number;
+}
+
 function run(command: ffmpeg.FfmpegCommand): Promise<void> {
   return new Promise((resolve, reject) => {
     command.on('end', () => resolve());
@@ -31,6 +42,57 @@ function run(command: ffmpeg.FfmpegCommand): Promise<void> {
     });
     command.run();
   });
+}
+
+function readMediaInfo(inputPath: string): Promise<MediaInfo> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      ffmpegPath ?? 'ffmpeg',
+      ['-hide_banner', '-i', inputPath],
+      { windowsHide: true, maxBuffer: 1024 * 1024 * 4 },
+      (_error, stdout, stderr) => {
+        const output = `${stdout}\n${stderr}`;
+        const durationMatch = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/u.exec(output);
+        const durationSec =
+          durationMatch?.[1] !== undefined &&
+          durationMatch[2] !== undefined &&
+          durationMatch[3] !== undefined
+            ? Number(durationMatch[1]) * 3600 +
+              Number(durationMatch[2]) * 60 +
+              Number(durationMatch[3])
+            : undefined;
+        const hasAudio = /Stream #\d+:\d+(?:\[[^\]]+\])?(?:\([^)]+\))?: Audio:/u.test(output);
+        if (durationSec === undefined && !/Input #/u.test(output)) {
+          reject(new AppError('E_FFMPEG_FAILED', `无法读取媒体信息：${inputPath}`));
+          return;
+        }
+        resolve(durationSec !== undefined ? { hasAudio, durationSec } : { hasAudio });
+      },
+    );
+  });
+}
+
+function filterDuration(durationSec: number | undefined, fallbackDurationSec?: number): string {
+  const value = durationSec ?? fallbackDurationSec;
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
+    throw new AppError('E_FFMPEG_FAILED', '无法读取视频时长，不能补静音音轨');
+  }
+  return Math.max(0.01, value).toFixed(3);
+}
+
+function audioFilter(
+  inputIndex: number,
+  mediaInfo: MediaInfo,
+  outputLabel: string,
+  fallbackDurationSec?: number,
+): string {
+  if (mediaInfo.hasAudio) {
+    return `[${inputIndex}:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[${outputLabel}]`;
+  }
+  return `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=${filterDuration(
+    mediaInfo.durationSec,
+    fallbackDurationSec,
+  )},asetpts=PTS-STARTPTS[${outputLabel}]`;
 }
 
 export async function normalizeVideo(inputPath: string, outputPath: string): Promise<string> {
@@ -79,6 +141,54 @@ export async function transcodeAudioToMp3(inputPath: string, outputPath: string)
     ffmpeg(inputPath)
       .noVideo()
       .outputOptions(['-c:a libmp3lame', '-ar 24000', '-ac 1'])
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
+export async function trimAudio(inputPath: string, outputPath: string, durationSec: number): Promise<string> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  await run(
+    ffmpeg(inputPath)
+      .noVideo()
+      .outputOptions(['-t', String(durationSec), '-c:a libmp3lame', '-ar 24000', '-ac 1'])
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
+export async function concatAudioSegments(
+  segments: AudioConcatSegment[],
+  outputPath: string,
+): Promise<string> {
+  if (segments.length === 0) {
+    throw new AppError('E_INPUT_VALIDATION', '至少需要 1 段音频用于拼接');
+  }
+  await mkdir(dirname(outputPath), { recursive: true });
+  const command = ffmpeg();
+  const filters: string[] = [];
+  let inputIndex = 0;
+  for (const [segmentIndex, segment] of segments.entries()) {
+    const duration = filterDuration(segment.durationSec);
+    const label = `a${segmentIndex}`;
+    if (segment.audioPath !== undefined) {
+      command.input(segment.audioPath);
+      filters.push(
+        `[${inputIndex}:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad=pad_dur=${duration},atrim=duration=${duration},asetpts=PTS-STARTPTS[${label}]`,
+      );
+      inputIndex += 1;
+    } else {
+      filters.push(
+        `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=${duration},asetpts=PTS-STARTPTS[${label}]`,
+      );
+    }
+  }
+  const inputs = segments.map((_segment, index) => `[a${index}]`).join('');
+  filters.push(`${inputs}concat=n=${segments.length}:v=0:a=1[a]`);
+  await run(
+    command
+      .complexFilter(filters)
+      .outputOptions(['-map [a]', '-c:a aac'])
       .output(outputPath),
   );
   return outputPath;
@@ -134,6 +244,7 @@ export async function concatWithFade(
   await mkdir(dirname(outputPath), { recursive: true });
   const fadeDurationSec = normalizeFadeDuration(options.fadeDurationSec);
   const offsetSec = fadeOffset(options.firstDurationSec, fadeDurationSec);
+  const [firstInfo, secondInfo] = await Promise.all([readMediaInfo(firstPath), readMediaInfo(secondPath)]);
   await run(
     ffmpeg()
       .input(firstPath)
@@ -145,8 +256,8 @@ export async function concatWithFade(
         '[v0scaled]settb=AVTB,setpts=PTS-STARTPTS[v0]',
         '[v1ref]settb=AVTB,setpts=PTS-STARTPTS[v1]',
         `[v0][v1]xfade=transition=fade:duration=${fadeDurationSec}:offset=${offsetSec},format=yuv420p[v]`,
-        '[0:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a0]',
-        '[1:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a1]',
+        audioFilter(0, firstInfo, 'a0', options.firstDurationSec),
+        audioFilter(1, secondInfo, 'a1'),
         `[a0][a1]acrossfade=d=${fadeDurationSec}[a]`,
       ])
       .outputOptions([
@@ -172,10 +283,16 @@ export async function concatVideos(videoPaths: string[], outputPath: string): Pr
   for (const videoPath of videoPaths) {
     command.input(videoPath);
   }
-  const inputs = videoPaths.map((_videoPath, index) => `[${index}:v][${index}:a]`).join('');
+  const mediaInfos = await Promise.all(videoPaths.map((videoPath) => readMediaInfo(videoPath)));
+  const filters = mediaInfos.flatMap((mediaInfo, index) => [
+    `[${index}:v]fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[v${index}]`,
+    audioFilter(index, mediaInfo, `a${index}`),
+  ]);
+  const inputs = videoPaths.map((_videoPath, index) => `[v${index}][a${index}]`).join('');
+  filters.push(`${inputs}concat=n=${videoPaths.length}:v=1:a=1[v][a]`);
   await run(
     command
-      .complexFilter([`${inputs}concat=n=${videoPaths.length}:v=1:a=1[v][a]`])
+      .complexFilter(filters)
       .outputOptions([
         '-map [v]',
         '-map [a]',

@@ -1,16 +1,22 @@
 import { useState } from 'react';
 
-import { Button, Form, Input, InputNumber, Space, Typography, message } from 'antd';
+import { Button, Form, Input, InputNumber, Radio, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined, UserOutlined } from '@ant-design/icons';
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
+import {
+  DEFAULT_VIDEO_RESOLUTION,
+  VIDEO_RESOLUTION_OPTIONS,
+  type VideoResolution,
+} from '../../shared/types.js';
 
 interface FormValues {
   avatarImagePath: string;
   brandIntro: string;
   productImagePaths: string[];
   duration: number;
+  resolution: VideoResolution;
 }
 
 export function Avatar() {
@@ -58,7 +64,11 @@ export function Avatar() {
           form={form}
           className="desktop-form"
           layout="vertical"
-          initialValues={{ duration: 30, productImagePaths: [] }}
+          initialValues={{
+            duration: 30,
+            productImagePaths: [],
+            resolution: DEFAULT_VIDEO_RESOLUTION,
+          }}
           onFinish={(values) => void submit(values)}
         >
           <Form.Item label="数字人图片" required>
@@ -115,6 +125,9 @@ export function Avatar() {
           </Button>
           <Form.Item name="duration" label="视频时长">
             <InputNumber min={15} max={60} className="number-input" />
+          </Form.Item>
+          <Form.Item name="resolution" label="生成分辨率" rules={[{ required: true }]}>
+            <Radio.Group optionType="button" buttonStyle="solid" options={VIDEO_RESOLUTION_OPTIONS} />
           </Form.Item>
           <Button
             type="primary"

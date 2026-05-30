@@ -10,6 +10,7 @@ test('native workflow exposes all six-industry generation nodes', () => {
     'script_confirm',
     'storyboard_builder',
     'compliance_pre',
+    'video_prompt_optimize',
     'asset_generator',
     'consistency_checker',
     'composer',

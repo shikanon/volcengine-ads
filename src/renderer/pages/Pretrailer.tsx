@@ -1,18 +1,22 @@
-import { Button, Form, Input, InputNumber, Select, Space, Typography, message } from 'antd';
+import { Button, Form, Input, InputNumber, Radio, Select, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
 import {
   DEFAULT_PRETRAILER_VIDEO_TYPE,
+  DEFAULT_VIDEO_RESOLUTION,
   PRETRAILER_VIDEO_TYPE_DEFINITIONS,
+  VIDEO_RESOLUTION_OPTIONS,
   type PretrailerStyle,
+  type VideoResolution,
 } from '../../shared/types.js';
 
 interface FormValues {
   sourceVideoPath: string;
   pretrailerDuration: number;
   style: PretrailerStyle;
+  resolution: VideoResolution;
 }
 
 export function Pretrailer() {
@@ -45,7 +49,11 @@ export function Pretrailer() {
           form={form}
           className="desktop-form"
           layout="vertical"
-          initialValues={{ pretrailerDuration: 7, style: DEFAULT_PRETRAILER_VIDEO_TYPE }}
+          initialValues={{
+            pretrailerDuration: 7,
+            style: DEFAULT_PRETRAILER_VIDEO_TYPE,
+            resolution: DEFAULT_VIDEO_RESOLUTION,
+          }}
           onFinish={(values) => void submit(values)}
         >
           <Form.Item label="原广告视频" required>
@@ -72,6 +80,9 @@ export function Pretrailer() {
                 label: definition.label,
               }))}
             />
+          </Form.Item>
+          <Form.Item name="resolution" label="生成分辨率" rules={[{ required: true }]}>
+            <Radio.Group optionType="button" buttonStyle="solid" options={VIDEO_RESOLUTION_OPTIONS} />
           </Form.Item>
           <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} className="primary-action">
             创建前贴任务

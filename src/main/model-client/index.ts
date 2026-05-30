@@ -7,8 +7,8 @@ export interface ModelClient {
   asr(audioPath: string): Promise<TranscriptResult>;
   tts(text: string, voice?: string): Promise<AudioResult>;
   chat(messages: ChatMessage[], opts?: ChatOptions): Promise<string>;
-  vision(images: string[], prompt: string): Promise<string>;
-  visionVideo(videoPath: string, prompt: string): Promise<string>;
+  vision(images: string[], prompt: string, opts?: VisionOptions): Promise<string>;
+  visionVideo(videoPath: string, prompt: string, opts?: VisionOptions): Promise<string>;
 }
 
 export interface SeedreamImageRequest {
@@ -21,6 +21,7 @@ export interface SeedreamImageRequest {
 export interface SeedanceVideoRequest {
   refVideoPath?: string;
   refImagePaths?: string[];
+  audioPath?: string;
   prompt: string;
   durationSec?: number;
   resolution?: string;
@@ -34,6 +35,8 @@ export interface SeedanceAvatarRequest {
   avatarImagePath: string;
   prompt?: string;
   durationSec?: number;
+  resolution?: string;
+  generateAudio?: boolean;
   outputPath: string;
 }
 
@@ -89,7 +92,12 @@ export type ChatContentPart =
 export interface ChatOptions {
   temperature?: number;
   jsonSchema?: object;
+  reasoningEffort?: ReasoningEffort;
 }
+
+export type VisionOptions = ChatOptions;
+
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
 export interface ModelClientFactory {
   create(): Promise<ModelClient>;

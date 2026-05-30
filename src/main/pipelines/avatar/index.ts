@@ -3,11 +3,15 @@ import { copyFile } from 'node:fs/promises';
 
 import { AppError } from '../../errors.js';
 import { concatVideos, overlayProductImages, transcodeAudioToMp3 } from '../../media/ffmpeg.js';
-import type { AvatarInput } from '../../../shared/types.js';
+import { DEFAULT_VIDEO_RESOLUTION, type AvatarInput } from '../../../shared/types.js';
 import {
   artifactPath,
+  buildReferencePolicyText,
+  buildSeedancePromptCard,
+  normalizeSeedanceGenerationDuration,
   parseModelJson,
   readJson,
+  splitDurationForSeedanceGeneration,
   waitForScriptConfirmation,
   workflowPrompt,
   writeJson,
@@ -17,24 +21,43 @@ import type { PipelineDefinition, StepContext } from '../types.js';
 interface AvatarValidation {
   valid: boolean;
   reason: string;
+  credibility?: string;
+  risks?: string[];
 }
 
 interface BrandParse {
   tone: string;
   audience: string;
+  audiencePain?: string;
+  oneLineBenefit?: string;
   differentiators: string[];
+  proofPoints?: string[];
+  forbiddenClaims?: string[];
 }
 
 interface ProductUnderstanding {
   shape: string;
   color: string;
   sellingPoints: string[];
+  visibleProofPoints?: string[];
+  requiredVisualElements?: string[];
+  forbiddenClaims?: string[];
+  visualRisks?: string[];
 }
 
 interface AvatarScript {
   text: string;
+  hookType?: 'pain_question' | 'benefit' | 'contrast' | 'micro_story';
   differentiators: string[];
-  timeline: Array<{ sellingPoint: string; atSec: number; productImageIndex: number }>;
+  ttsNotes?: string;
+  avatarSceneType?: 'single_talking' | 'product_overlay' | 'picture_in_picture' | 'desk_demo';
+  timeline: Array<{
+    sellingPoint: string;
+    atSec: number;
+    productImageIndex: number;
+    visualAction?: string;
+  }>;
+  riskControl?: string;
 }
 
 interface AvatarAudioSegment {
@@ -53,26 +76,12 @@ interface AvatarVideoSegment {
   lipSyncOffsetMs?: number;
 }
 
-const DIGITAL_HUMAN_MIN_DURATION_SEC = 4;
-const DIGITAL_HUMAN_MAX_DURATION_SEC = 15;
+interface AvatarVideoPrompts {
+  basePrompt: string;
+}
 
 function splitDurationForDigitalHuman(durationSec: number): number[] {
-  const normalizedDuration = Math.max(DIGITAL_HUMAN_MIN_DURATION_SEC, Math.round(durationSec));
-  const chunks: number[] = [];
-  let remaining = normalizedDuration;
-  while (remaining > DIGITAL_HUMAN_MAX_DURATION_SEC) {
-    const remainingAfterMax = remaining - DIGITAL_HUMAN_MAX_DURATION_SEC;
-    const current =
-      remainingAfterMax > 0 && remainingAfterMax < DIGITAL_HUMAN_MIN_DURATION_SEC
-        ? DIGITAL_HUMAN_MAX_DURATION_SEC - (DIGITAL_HUMAN_MIN_DURATION_SEC - remainingAfterMax)
-        : DIGITAL_HUMAN_MAX_DURATION_SEC;
-    chunks.push(current);
-    remaining -= current;
-  }
-  if (remaining > 0) {
-    chunks.push(remaining);
-  }
-  return chunks;
+  return splitDurationForSeedanceGeneration(durationSec);
 }
 
 function splitTextIntoSentences(text: string): string[] {
@@ -185,7 +194,7 @@ async function runBrandParse(ctx: StepContext<AvatarInput>) {
   const response = await ctx.modelClient.chat([
     {
       role: 'system',
-      content: '你是品牌策略解析助手，只输出合法 JSON。',
+      content: '你是品牌策略解析助手。先内部分析人群、痛点、证据和禁用承诺，不输出推理链；只输出合法 JSON。',
     },
     {
       role: 'user',
@@ -208,7 +217,7 @@ async function runScriptGen(ctx: StepContext<AvatarInput>) {
     {
       role: 'system',
       content:
-        '你是电商数字人口播编导。只输出 JSON：{"text":"...","differentiators":["...","..."],"timeline":[{"sellingPoint":"...","atSec":4,"productImageIndex":0}]}。',
+        '你是转化型数字人口播编导。先内部比较痛点设问、福利利益、对比反差和轻剧情方向，不输出推理链；只输出 JSON：{"text":"...","hookType":"pain_question|benefit|contrast|micro_story","differentiators":["...","..."],"ttsNotes":"...","avatarSceneType":"single_talking|product_overlay|picture_in_picture|desk_demo","timeline":[{"sellingPoint":"...","atSec":4,"productImageIndex":0,"visualAction":"..."}],"riskControl":"..."}。',
     },
     {
       role: 'user',
@@ -275,7 +284,7 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
       {
         index: 1,
         text: '',
-        durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+        durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
         audioPath: supportedAudioPath,
       },
     ];
@@ -287,7 +296,7 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
       {
         index: 1,
         text: '',
-        durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+        durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
         audioPath: await transcodeAudioToMp3(legacyAudioPath, supportedAudioPath),
       },
     ];
@@ -297,15 +306,50 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
     {
       index: 1,
       text: '',
-      durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+      durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
       audioPath: supportedAudioPath,
     },
   ];
 }
 
+async function buildAvatarBasePrompt(ctx: StepContext<AvatarInput>): Promise<string> {
+  const scriptPath = artifactPath(ctx.artifactDir, 'script.json');
+  const script = existsSync(scriptPath) ? await readJson<AvatarScript>(scriptPath) : undefined;
+  const referencePolicy = buildReferencePolicyText({
+    hasAvatarImage: true,
+    hasProductImages: ctx.input.productImagePaths.length > 0,
+    purpose: '数字人口播广告生成：音频驱动唇形，人物可信出镜，产品露出服务转化。',
+  });
+  return `${workflowPrompt(ctx, 'avatar.seedance_avatar')}\n${buildSeedancePromptCard({
+    outputGoal: '转化型数字人口播广告',
+    durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
+    visualAnchor: `参考数字人形象；产品图数量 ${ctx.input.productImagePaths.length}`,
+    behaviorState: script?.avatarSceneType ?? 'single_talking',
+    localTone: '可信、自然、清晰、轻微手势，眼神稳定看向镜头',
+    videoTheme: script?.hookType ?? '数字人口播转化广告',
+    referencePolicy,
+    sourceText: script?.text,
+    preservedConstraints: ['参考音频', '唇形同步', '人物身份一致', '产品露出时间轴'],
+    forbidden: ['不要改变人物身份', '不要夸大产品效果', '不要生成水印、字幕或不可控文字'],
+    repairHint: '若唇形或人物不稳定，降低动作幅度并强调正面半身；若产品露出弱，改为画中画或产品贴片。',
+  })}`;
+}
+
+async function runVideoPromptOptimize(ctx: StepContext<AvatarInput>) {
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
+      basePrompt: await buildAvatarBasePrompt(ctx),
+    }),
+  };
+}
+
 async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
   const audioSegments = await ensureDigitalHumanAudio(ctx);
-  const basePrompt = workflowPrompt(ctx, 'avatar.seedance_avatar');
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<AvatarVideoPrompts>(videoPromptsPath)
+    : undefined;
+  const basePrompt = videoPrompts?.basePrompt ?? (await buildAvatarBasePrompt(ctx));
   const videoSegments: AvatarVideoSegment[] = [];
   for (const segment of audioSegments) {
     const outputPath =
@@ -321,6 +365,8 @@ async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
       avatarImagePath: artifactPath(ctx.artifactDir, 'avatar_reference.png'),
       prompt: segmentPrompt,
       durationSec: segment.durationSec,
+      resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
+      generateAudio: true,
       outputPath,
     });
     videoSegments.push({
@@ -392,6 +438,7 @@ export const avatarPipeline: PipelineDefinition<AvatarInput> = {
     { name: 'script_gen', runStep: runScriptGen },
     { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'tts', runStep: runTts },
+    { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'seedance_avatar', runStep: runSeedanceAvatar },
     { name: 'overlay', runStep: runOverlay },
     { name: 'postprocess', runStep: runPostprocess },

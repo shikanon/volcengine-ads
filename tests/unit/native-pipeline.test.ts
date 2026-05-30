@@ -513,6 +513,7 @@ describe('nativePipeline', () => {
       variantCount: 1,
       durationSec: 25,
       ratio: '9:16' as const,
+      resolution: '480p' as const,
     };
     const task: TaskRecord = {
       id: 'task-native',
@@ -586,10 +587,14 @@ describe('nativePipeline', () => {
 
     expect(modelClient.videoRequests.map((request) => request.durationSec)).toEqual([15, 10]);
     expect(modelClient.videoRequests.map((request) => request.generateAudio)).toEqual([
-      false,
-      false,
+      true,
+      true,
     ]);
     expect(modelClient.videoRequests.map((request) => request.ratio)).toEqual(['9:16', '9:16']);
+    expect(modelClient.videoRequests.map((request) => request.resolution)).toEqual([
+      '480p',
+      '480p',
+    ]);
     expect(modelClient.videoRequests[1]?.prompt).toContain('参考该视频的主体位置');
     expect(modelClient.videoRequests.map((request) => request.outputPath)).toEqual([
       join(artifactDir, 'asset_variant_1_part_1.mp4'),

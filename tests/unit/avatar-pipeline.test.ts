@@ -138,7 +138,7 @@ describe('avatarPipeline', () => {
 
   it('converts legacy m4a voice artifact before Seedance digital human generation', async () => {
     const artifactDir = mkdtempSync(join(tmpdir(), 'avatar-pipeline-'));
-    const input = createInput(artifactDir);
+    const input = { ...createInput(artifactDir), duration: 2, resolution: '1080p' as const };
     const step = avatarPipeline.steps.find((item) => item.name === 'seedance_avatar');
     if (step === undefined) {
       throw new Error('seedance_avatar step missing');
@@ -164,6 +164,9 @@ describe('avatarPipeline', () => {
       join(artifactDir, 'voice.mp3'),
     );
     expect(modelClient.digitalHumanRequests[0]?.audioPath).toBe(join(artifactDir, 'voice.mp3'));
+    expect(modelClient.digitalHumanRequests[0]?.durationSec).toBe(4);
+    expect(modelClient.digitalHumanRequests[0]?.resolution).toBe('1080p');
+    expect(modelClient.digitalHumanRequests[0]?.generateAudio).toBe(true);
   });
 
   it('splits long digital human scripts into multiple Seedance-compatible segments', async () => {
@@ -211,5 +214,6 @@ describe('avatarPipeline', () => {
     ]);
     expect(modelClient.digitalHumanRequests[0]?.audioPath).toBe(join(artifactDir, 'voice_part_1.mp3'));
     expect(modelClient.digitalHumanRequests[1]?.audioPath).toBe(join(artifactDir, 'voice_part_2.mp3'));
+    expect(modelClient.digitalHumanRequests.map((request) => request.generateAudio)).toEqual([true, true]);
   });
 });

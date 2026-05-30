@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { AppError } from '../../src/main/errors.js';
 import { validateCreateTaskRequest } from '../../src/main/validation.js';
+import { DEFAULT_VIDEO_RESOLUTION } from '../../src/shared/types.js';
 
 describe('validateCreateTaskRequest', () => {
   it('accepts explosion input and applies variant count bounds', () => {
@@ -15,7 +16,11 @@ describe('validateCreateTaskRequest', () => {
       }),
     ).toEqual({
       type: 'explosion',
-      input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 3 },
+      input: {
+        douyinUrl: 'https://v.douyin.com/demo',
+        variantCount: 3,
+        resolution: DEFAULT_VIDEO_RESOLUTION,
+      },
     });
   });
 
@@ -31,8 +36,31 @@ describe('validateCreateTaskRequest', () => {
       }),
     ).toEqual({
       type: 'explosion',
-      input: { sourceVideoPath, variantCount: 3 },
+      input: { sourceVideoPath, variantCount: 3, resolution: DEFAULT_VIDEO_RESOLUTION },
     });
+  });
+
+  it('accepts explicit task video resolution', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'explosion',
+        input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 3, resolution: '1080p' },
+      }),
+    ).toEqual({
+      type: 'explosion',
+      input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 3, resolution: '1080p' },
+    });
+  });
+
+  it('rejects unsupported task video resolution', () => {
+    const request = {
+      type: 'explosion',
+      input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 3, resolution: '540p' },
+    } as unknown as Parameters<typeof validateCreateTaskRequest>[0];
+
+    expect(() =>
+      validateCreateTaskRequest(request),
+    ).toThrow(AppError);
   });
 
   it('rejects explosion input with both douyin url and local video', () => {
@@ -78,6 +106,7 @@ describe('validateCreateTaskRequest', () => {
           sourceVideoPath,
           pretrailerDuration: 7,
           style,
+          resolution: DEFAULT_VIDEO_RESOLUTION,
         },
       });
     }
@@ -111,6 +140,7 @@ describe('validateCreateTaskRequest', () => {
         variantCount: 2,
         durationSec: 15,
         ratio: '9:16',
+        resolution: DEFAULT_VIDEO_RESOLUTION,
       },
     });
   });
@@ -152,6 +182,7 @@ describe('validateCreateTaskRequest', () => {
         variantCount: 1,
         durationSec: 30,
         ratio: '9:16',
+        resolution: DEFAULT_VIDEO_RESOLUTION,
       },
     });
   });

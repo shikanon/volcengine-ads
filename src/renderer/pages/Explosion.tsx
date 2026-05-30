@@ -3,6 +3,11 @@ import { FolderOpenOutlined, ThunderboltOutlined } from '@ant-design/icons';
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
+import {
+  DEFAULT_VIDEO_RESOLUTION,
+  VIDEO_RESOLUTION_OPTIONS,
+  type VideoResolution,
+} from '../../shared/types.js';
 
 type SourceMode = 'douyin' | 'local';
 
@@ -11,6 +16,7 @@ interface FormValues {
   douyinUrl?: string;
   sourceVideoPath?: string;
   variantCount: number;
+  resolution: VideoResolution;
 }
 
 export function Explosion() {
@@ -31,10 +37,18 @@ export function Explosion() {
     const input =
       values.sourceMode === 'local'
         ? values.sourceVideoPath
-          ? { sourceVideoPath: values.sourceVideoPath, variantCount: values.variantCount }
+          ? {
+              sourceVideoPath: values.sourceVideoPath,
+              variantCount: values.variantCount,
+              resolution: values.resolution,
+            }
           : undefined
         : values.douyinUrl
-          ? { douyinUrl: values.douyinUrl, variantCount: values.variantCount }
+          ? {
+              douyinUrl: values.douyinUrl,
+              variantCount: values.variantCount,
+              resolution: values.resolution,
+            }
           : undefined;
     if (!input) {
       void message.error('请选择或填写爆款素材');
@@ -59,7 +73,11 @@ export function Explosion() {
           form={form}
           className="desktop-form"
           layout="vertical"
-          initialValues={{ sourceMode: 'douyin', variantCount: 3 }}
+          initialValues={{
+            sourceMode: 'douyin',
+            variantCount: 3,
+            resolution: DEFAULT_VIDEO_RESOLUTION,
+          }}
           onFinish={(values) => void submit(values)}
         >
           <Form.Item name="sourceMode" label="视频来源">
@@ -94,6 +112,9 @@ export function Explosion() {
           )}
           <Form.Item name="variantCount" label="裂变数量" rules={[{ required: true }]}>
             <InputNumber min={1} max={10} className="number-input" />
+          </Form.Item>
+          <Form.Item name="resolution" label="生成分辨率" rules={[{ required: true }]}>
+            <Radio.Group optionType="button" buttonStyle="solid" options={VIDEO_RESOLUTION_OPTIONS} />
           </Form.Item>
           <Button
             type="primary"

@@ -23,11 +23,18 @@
 4. `script_confirm`：展示 `scripts.md` 并进入 `waiting_confirmation`，由用户确认脚本文案后继续
 5. `storyboard_builder`：写入 `storyboard.json`
 6. `compliance_pre`：写入 `compliance_pre.json`
-7. `asset_generator`：写入 `assets.json`。单次 Seedance 生成片段必须控制在 4..15s；当 `durationSec` 超过 15s 时，按多个片段生成（如 25s = 15s + 10s），记录每段成功/失败状态，最终用 FFmpeg 拼接为单条成片。
-8. `consistency_checker`：写入 `consistency.json`
-9. `composer`：写入 `finals.json` 并入库成片
+7. `video_prompt_optimize`：写入 `video_prompts.json`，在调用 Seedance 前把脚本、分镜、参考素材策略和合规约束整理为最终视频生成提示词。
+8. `asset_generator`：写入 `assets.json`。单次 Seedance 生成片段必须控制在 4..15s；当 `durationSec` 超过 15s 时，按多个片段生成（如 25s = 15s + 10s），记录每段成功/失败状态，最终用 FFmpeg 拼接为单条成片。
+9. `consistency_checker`：写入 `consistency.json`
+10. `composer`：写入 `finals.json` 并入库成片
 
 广告爆款裂变、原生爆款素材生成、广告前贴生成、广告数字人口播都必须在脚本文案生成后、视频/音频生成前进入 `script_confirm` 确认环节。确认节点不调用模型，仅复用上游脚本文案产物供用户预览；任务状态为 `waiting_confirmation` 时，用户确认后通过 `task:confirm-script` 将该节点标记为 `success` 并恢复排队继续执行。
+
+所有工作流在视频生成类节点前必须进入 `video_prompt_optimize` 节点。该节点产出可直接传给 Seedance / 数字人生成接口的最终视频提示词 artifact；后续 `seedance`、`asset_generator`、`seedance_avatar` 节点必须优先读取该 artifact 发起视频生成。
+
+广告爆款裂变的 `video_prompt_optimize` 还必须把每个分镜片段中的口播或对白文本按男女声匹配火山 TTS 音色合成为片段参考音频，写入 `video_prompts.json`；单段 TTS 参考音频必须与对应 Seedance 片段一样控制在 4..15s 内。`seedance` 节点调用视频生成时必须同时传入最终提示词、参考视频和该分段 TTS 音频；若参考视频被模型拒绝并降级为无参考生成，不得只传 TTS 音频，必须降级为纯文本生成。若某条裂变素材使用了 TTS 参考音频，最终 `audio_replace` 不得再用原片音频覆盖：Seedance 已实际使用 TTS 音频时保留模型生成音频；Seedance 降级为纯文本生成时，必须把 `video_prompts.json` 中的分段 TTS 拼接为最终音轨后替换到成片中。
+
+广告爆款裂变、原生爆款素材生成、广告前贴生成、广告数字人口播都必须支持 `resolution` 生成分辨率选项：`480p | 720p | 1080p`。未显式选择时默认 `720p`；该值必须作为视频生成或数字人生成请求的 `resolution` 参数传给模型。
 
 ## 3.1 视频理解输入策略
 
@@ -53,6 +60,7 @@
 ```typescript
 type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool' | 'ecommerce';
 type NativeRatio = '9:16' | '16:9' | '1:1';
+type VideoResolution = '480p' | '720p' | '1080p';
 
 interface NativeInput {
   industry: NativeIndustry;
@@ -62,6 +70,7 @@ interface NativeInput {
   variantCount: number; // 1..5
   durationSec: number;  // game/social/tool/ecommerce: 15..30, novel: 15..60, short_drama: 15..300
   ratio: NativeRatio;
+  resolution?: VideoResolution; // default: 720p
 }
 ```
 

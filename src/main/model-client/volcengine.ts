@@ -24,6 +24,7 @@ import type {
   SeedanceVideoRequest,
   TranscriptResult,
   VideoResult,
+  VisionOptions,
 } from './index.js';
 
 const MODEL_LIMIT = pLimit(2);
@@ -653,6 +654,15 @@ export class VolcengineModelClient implements ModelClient {
         role: 'reference_video',
       });
     }
+    if (req.audioPath) {
+      const audioPath = requireLocalFile(req.audioPath, 'Seedance 参考音频');
+      validateSeedanceAudio(audioPath, 'Seedance 参考音频');
+      content.push({
+        type: 'audio_url',
+        audio_url: { url: await fileToDataUrl(audioPath) },
+        role: 'reference_audio',
+      });
+    }
     return this.submitAndDownloadVideo(
       content,
       outputPath,
@@ -686,7 +696,14 @@ export class VolcengineModelClient implements ModelClient {
         text: req.prompt ?? '基于参考音频驱动数字人口播，保持正面构图、自然唇形和轻微表情动作。',
       },
     ];
-    return this.submitAndDownloadVideo(content, outputPath, durationSec, '720p');
+    return this.submitAndDownloadVideo(
+      content,
+      outputPath,
+      durationSec,
+      normalizeSeedanceResolution(req.resolution),
+      'adaptive',
+      req.generateAudio ?? false,
+    );
   }
 
   async asr(audioPath: string): Promise<TranscriptResult> {
@@ -828,7 +845,7 @@ export class VolcengineModelClient implements ModelClient {
     if (normalizedText.length > 1000) {
       throw new AppError('E_INPUT_VALIDATION', 'TTS 文本不能超过 1000 字符');
     }
-    const outputPath = `${process.cwd()}/tmp/tts-${Date.now()}.mp3`;
+    const outputPath = `${process.cwd()}/tmp/tts-${Date.now()}-${randomUUID()}.mp3`;
     return MODEL_LIMIT(() =>
       pRetry(
         async () => {
@@ -945,7 +962,7 @@ export class VolcengineModelClient implements ModelClient {
     );
   }
 
-  async vision(images: string[], prompt: string): Promise<string> {
+  async vision(images: string[], prompt: string, opts?: VisionOptions): Promise<string> {
     if (!Array.isArray(images) || images.length === 0) {
       throw new AppError('E_INPUT_VALIDATION', '视觉理解图片不能为空');
     }
@@ -961,10 +978,14 @@ export class VolcengineModelClient implements ModelClient {
       )),
       { type: 'text', text: normalizedPrompt },
     ];
-    return this.chat([{ role: 'user', content }], { temperature: 0.2 });
+    return this.chat([{ role: 'user', content }], {
+      temperature: opts?.temperature ?? 0.2,
+      ...(opts?.jsonSchema !== undefined ? { jsonSchema: opts.jsonSchema } : {}),
+      ...(opts?.reasoningEffort !== undefined ? { reasoningEffort: opts.reasoningEffort } : {}),
+    });
   }
 
-  async visionVideo(videoPath: string, prompt: string): Promise<string> {
+  async visionVideo(videoPath: string, prompt: string, opts?: VisionOptions): Promise<string> {
     const normalizedVideoPath = requireLocalFile(videoPath, '视觉理解视频');
     const normalizedPrompt = requireNonEmpty(prompt, '视觉理解提示词');
     const content: ChatContentPart[] = [
@@ -974,7 +995,11 @@ export class VolcengineModelClient implements ModelClient {
       },
       { type: 'text', text: normalizedPrompt },
     ];
-    return this.chat([{ role: 'user', content }], { temperature: 0.2 });
+    return this.chat([{ role: 'user', content }], {
+      temperature: opts?.temperature ?? 0.2,
+      ...(opts?.jsonSchema !== undefined ? { jsonSchema: opts.jsonSchema } : {}),
+      ...(opts?.reasoningEffort !== undefined ? { reasoningEffort: opts.reasoningEffort } : {}),
+    });
   }
 
   private async submitAndDownloadVideo(

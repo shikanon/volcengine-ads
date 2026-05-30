@@ -150,6 +150,7 @@ describe('pretrailerPipeline', () => {
       sourceVideoPath: join(artifactDir, 'source-input.mp4'),
       pretrailerDuration: 7,
       style: 'benefit',
+      resolution: '1080p',
     };
     const task: TaskRecord = {
       id: 'task-pretrailer',
@@ -194,6 +195,7 @@ describe('pretrailerPipeline', () => {
       sourceVideoPath: join(artifactDir, 'source-input.mp4'),
       pretrailerDuration: 7,
       style: 'benefit',
+      resolution: '1080p',
     };
     const task: TaskRecord = {
       id: 'task-pretrailer',
@@ -234,9 +236,55 @@ describe('pretrailerPipeline', () => {
     expect(modelClient.videoRequests).toHaveLength(1);
     expect(modelClient.videoRequests[0]).toMatchObject({
       durationSec: 7,
+      resolution: '1080p',
+      generateAudio: true,
       outputPath: join(artifactDir, 'pretrailer.mp4'),
     });
     expect(modelClient.videoRequests[0]?.refImagePaths).toBeUndefined();
+  });
+
+  it('normalizes pretrailer Seedance request duration to the single-call range', async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), 'pretrailer-pipeline-'));
+    const input: PretrailerInput = {
+      sourceVideoPath: join(artifactDir, 'source-input.mp4'),
+      pretrailerDuration: 2,
+      style: 'benefit',
+    };
+    const task: TaskRecord = {
+      id: 'task-pretrailer',
+      type: 'pretrailer',
+      status: 'running',
+      progress: 0,
+      input,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      steps: [],
+    };
+    await writeFile(
+      join(artifactDir, 'script.json'),
+      JSON.stringify({
+        shots: [{ index: 1, durationSec: 1, prompt: '首秒强钩子镜头' }],
+      }),
+      'utf8',
+    );
+
+    const step = pretrailerPipeline.steps.find((item) => item.name === 'seedance');
+    if (step === undefined) {
+      throw new Error('seedance step missing');
+    }
+    const modelClient = new PretrailerMockModelClient();
+
+    await step.runStep({
+      task,
+      input,
+      artifactDir,
+      repository: {} as TaskRepository,
+      modelClient,
+      workflowPrompts: {},
+      emitProgress: () => undefined,
+    });
+
+    expect(modelClient.videoRequests[0]?.durationSec).toBe(4);
   });
 
   it('passes pretrailer duration to fade concat so xfade starts at the segment tail', async () => {

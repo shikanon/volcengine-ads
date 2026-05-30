@@ -607,10 +607,14 @@ async function createNativeSeedanceTask(content, label) {
     return await createSeedanceTask(content, label);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!/InputVideoSensitiveContentDetected|real person/iu.test(message)) {
+    if (
+      !/InputVideoSensitiveContentDetected|real person|reference_video|resource download failed|video_url/iu.test(
+        message,
+      )
+    ) {
       throw error;
     }
-    console.log(`${label} reference video rejected by safety policy; retrying without reference`);
+    console.log(`${label} reference video unavailable; retrying without reference`);
     return createSeedanceTask(
       content.filter((item) => item.type !== 'video_url'),
       `${label} without reference`,
@@ -737,6 +741,36 @@ function collectStoryboardText(storyboard) {
     .join('\n');
 }
 
+function stripReadableTextInstructions(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  return value
+    .replace(/字幕[^，。；\n]*/gu, '无文字图形元素')
+    .replace(/标题[^，。；\n]*/gu, '抽象标题色块但不含文字')
+    .replace(/按钮文案[^，。；\n]*/gu, '按钮形色块但不含文字')
+    .replace(/点击卡片[^，。；\n]*/gu, '抽象行动引导色块但不含文字')
+    .replace(/弹窗[^，。；\n]*/gu, '抽象界面卡片但不含文字')
+    .replace(/手机屏幕显示[^，。；\n]*/gu, '手机屏幕展示抽象健康提醒界面但不含文字')
+    .replace(/「[^」]+」/gu, '抽象信息')
+    .replace(/“[^”]+”/gu, '抽象信息')
+    .replace(/福字/gu, '红色新年剪纸纹样')
+    .replace(/Logo/giu, '品牌抽象标识但不含文字')
+    .replace(/可读文字/gu, '可识别文字');
+}
+
+function enforceNoReadableTextStoryboard(storyboard) {
+  return {
+    ...storyboard,
+    script: stripReadableTextInstructions(storyboard.script),
+    shots: (storyboard.shots || []).map((shot) => ({
+      ...shot,
+      imagePrompt: `${stripReadableTextInstructions(shot.imagePrompt)}，画面中不要出现任何可读文字、字幕、花字、按钮文案、价格牌或 Logo。`,
+      videoPrompt: `${stripReadableTextInstructions(shot.videoPrompt)}，画面中不要出现任何可读文字、字幕、花字、按钮文案、价格牌或 Logo。`,
+    })),
+  };
+}
+
 function findNativeComplianceHits(industry, storyboard) {
   const text = collectStoryboardText(storyboard);
   return [
@@ -780,7 +814,7 @@ async function runNativeIndustrySmoke(industryKey, referenceVideoPath, reference
       { role: 'system', content: '你是多行业广告策略规划师，只输出合法 JSON。' },
       {
         role: 'user',
-        content: `按行业公式生成一条原生爆款广告概念。行业：${industry.title}。公式：${industry.formula}。必备模块：${industry.requiredModules.join('、')}。合规重点：${industry.complianceFocus}。不得在输出中出现这些字面表达：${[...industry.blacklistWords, ...industry.forbiddenScenes].join('、') || '无'}。创意简报：${brief}。只输出 JSON：{"title":"...","hook":"...","audience":"...","sellingPoints":["..."],"modules":["..."],"cta":"...","tone":"..."}`,
+        content: `按行业公式生成一条原生爆款广告概念。行业：${industry.title}。公式：${industry.formula}。必备模块：${industry.requiredModules.join('、')}。合规重点：${industry.complianceFocus}。视频画面不要设计任何可读文字、字幕、花字、按钮文案、价格牌或 Logo；产品信息通过口播和抽象 UI 图形表达。不得在输出中出现这些字面表达：${[...industry.blacklistWords, ...industry.forbiddenScenes].join('、') || '无'}。创意简报：${brief}。只输出 JSON：{"title":"...","hook":"...","audience":"...","sellingPoints":["..."],"modules":["..."],"cta":"...","tone":"..."}`,
       },
     ],
     `Native ${industryKey} concept`,
@@ -791,7 +825,7 @@ async function runNativeIndustrySmoke(industryKey, referenceVideoPath, reference
       { role: 'system', content: '你是信息流广告脚本编导，只输出合法 JSON。' },
       {
         role: 'user',
-        content: `把概念写成 4 秒广告脚本，不使用违禁词、禁用场景或夸大承诺。不得在输出中出现这些字面表达：${[...industry.blacklistWords, ...industry.forbiddenScenes].join('、') || '无'}。概念：${JSON.stringify(concept)}。只输出 JSON：{"title":"...","script":"完整口播/字幕脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","beats":[{"timeSec":0,"text":"..."}]}`,
+        content: `把概念写成 4 秒广告口播脚本，不使用违禁词、禁用场景或夸大承诺。不得在输出中出现这些字面表达：${[...industry.blacklistWords, ...industry.forbiddenScenes].join('、') || '无'}。概念：${JSON.stringify(concept)}。只输出 JSON：{"title":"...","script":"完整口播脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","beats":[{"timeSec":0,"text":"..."}]}`,
       },
     ],
     `Native ${industryKey} script`,
@@ -802,7 +836,7 @@ async function runNativeIndustrySmoke(industryKey, referenceVideoPath, reference
       { role: 'system', content: '你是短视频广告分镜师，只输出合法 JSON。' },
       {
         role: 'user',
-        content: `把脚本拆成 9:16 的 4 秒视频生成分镜。必须包含行业模块：${industry.requiredModules.join('、')}。不得在输出中出现这些字面表达：${[...industry.blacklistWords, ...industry.forbiddenScenes].join('、') || '无'}。脚本：${JSON.stringify(script)}。只输出 JSON：{"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":4,"imagePrompt":"...","videoPrompt":"...","voiceoverText":"...","module":"..."}]}`,
+        content: `把脚本拆成 9:16 的 4 秒视频生成分镜。必须包含行业模块：${industry.requiredModules.join('、')}。视频生成阶段不要出现任何可读文字、字幕、花字、按钮文案、价格牌或 Logo；口播文本只作为节奏参考。不得在输出中出现这些字面表达：${[...industry.blacklistWords, ...industry.forbiddenScenes].join('、') || '无'}。脚本：${JSON.stringify(script)}。只输出 JSON：{"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":4,"imagePrompt":"...","videoPrompt":"不包含可读文字的画面提示词","voiceoverText":"...","module":"..."}]}`,
       },
     ],
     `Native ${industryKey} storyboard`,
@@ -826,6 +860,7 @@ async function runNativeIndustrySmoke(industryKey, referenceVideoPath, reference
     rewriteCount += 1;
   }
   assertNativeCompliance(industry, storyboard);
+  storyboard = enforceNoReadableTextStoryboard(storyboard);
 
   await smokeTts();
   const content = [
@@ -841,7 +876,7 @@ async function runNativeIndustrySmoke(industryKey, referenceVideoPath, reference
         `标题：${storyboard.title}`,
         `脚本：${storyboard.script}`,
         `分镜：${JSON.stringify(storyboard.shots)}`,
-        '要求：4 秒，9:16，节日健康氛围，主体稳定，不添加水印或虚假承诺。',
+        '要求：4 秒，9:16，节日健康氛围，主体稳定，不添加水印或虚假承诺，画面中不要出现任何可读文字、字幕、花字、按钮文案、价格牌或 Logo。',
       ].join('\n'),
     },
   ];
@@ -882,10 +917,19 @@ async function smokeNativeWorkflows() {
   const trimmedReferenceVideoPath = await trimVideoForSeedanceReference(referenceVideoPath);
   const referenceVideoUrl = await uploadOssForAsr(trimmedReferenceVideoPath);
   console.log('Native reference video OSS upload smoke passed');
-  for (const industryKey of Object.keys(nativeIndustries)) {
+  const requestedIndustries = (process.env.LIVE_SMOKE_NATIVE_INDUSTRY || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const industryKeys =
+    requestedIndustries.length > 0 ? requestedIndustries : Object.keys(nativeIndustries);
+  for (const industryKey of industryKeys) {
+    if (!nativeIndustries[industryKey]) {
+      throw new Error(`未知 native smoke 行业：${industryKey}`);
+    }
     await runNativeIndustrySmoke(industryKey, referenceVideoPath, referenceVideoUrl);
   }
-  console.log('Native five-industry smoke passed');
+  console.log(`Native ${industryKeys.length}-industry smoke passed`);
 }
 
 async function fileDataUrl(localPath, mimeType) {

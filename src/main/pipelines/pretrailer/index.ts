@@ -1,14 +1,19 @@
+import { existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 
 import { AppError } from '../../errors.js';
 import { concatWithFade, extractAudio, muxAudioVideo, normalizeVideo } from '../../media/ffmpeg.js';
 import {
+  DEFAULT_VIDEO_RESOLUTION,
   getPretrailerVideoTypePrompt,
   normalizePretrailerStyle,
   type PretrailerInput,
 } from '../../../shared/types.js';
 import {
   artifactPath,
+  buildReferencePolicyText,
+  buildSeedancePromptCard,
+  normalizeSeedanceGenerationDuration,
   parseModelJson,
   readJson,
   waitForScriptConfirmation,
@@ -20,19 +25,92 @@ import type { PipelineDefinition, StepContext } from '../types.js';
 interface Understanding {
   confidence: number;
   category: string;
+  productOrStoryAnchor?: string;
   sellingPoints: string[];
+  hookFormula?: string;
+  proofPoints?: string[];
   visualStyle: string;
   audience: string;
+  audiencePain?: string;
+  openingContext?: string;
+  transitionNeeds?: string;
+  endingFrameContext?: string;
+  riskNotes?: string[];
+}
+
+interface PretrailerCopyCandidate {
+  hookType: 'conflict' | 'contrast' | 'pain' | 'spectacle' | 'spoken_question';
+  text: string;
+  hookAtSec: number;
+  firstSecondVisual: string;
+  reason?: string;
+  riskNote?: string;
 }
 
 interface PretrailerCopy {
   text: string;
   hookAtSec: number;
   voice?: string;
+  hookVisual?: string;
+  riskNote?: string;
+  selectedIndex?: number;
+  candidates?: PretrailerCopyCandidate[];
 }
 
 interface PretrailerScript {
-  shots: Array<{ index: number; durationSec: number; prompt: string }>;
+  firstSecondVisual?: string;
+  transitionPlan?: string;
+  endingFramePrompt?: string;
+  shots: Array<{
+    index: number;
+    durationSec: number;
+    prompt: string;
+    visualAnchor?: string;
+    behaviorState?: string;
+    localTone?: string;
+    videoTheme?: string;
+  }>;
+}
+
+interface PretrailerVideoPrompts {
+  prompt: string;
+}
+
+function normalizePretrailerCopy(copy: PretrailerCopy): PretrailerCopy {
+  if (copy.text && typeof copy.hookAtSec === 'number') {
+    return copy;
+  }
+  const selectedIndex = Math.max(1, copy.selectedIndex ?? 1);
+  const selected = copy.candidates?.[selectedIndex - 1] ?? copy.candidates?.[0];
+  if (selected === undefined) {
+    return copy;
+  }
+  return {
+    ...copy,
+    text: selected.text,
+    hookAtSec: selected.hookAtSec,
+    hookVisual: selected.firstSecondVisual,
+    ...(selected.riskNote !== undefined ? { riskNote: selected.riskNote } : {}),
+    selectedIndex,
+  };
+}
+
+function buildPretrailerSeedancePrompt(script: PretrailerScript, referencePolicy: string): string {
+  const sourceText = script.shots
+    .map((shot) => `镜头 ${shot.index}（${shot.durationSec}s）：${shot.prompt}`)
+    .join('\n');
+  return buildSeedancePromptCard({
+    outputGoal: '广告前贴，首秒强钩子并自然接入原广告',
+    visualAnchor: script.shots.map((shot) => shot.visualAnchor ?? shot.prompt).join('；'),
+    behaviorState: script.shots.map((shot) => shot.behaviorState ?? shot.prompt).join('；'),
+    localTone: script.shots.map((shot) => shot.localTone ?? '节奏紧凑，视觉冲击服务停留').join('；'),
+    videoTheme: script.shots.map((shot) => shot.videoTheme ?? '广告前贴钩子').join('；'),
+    referencePolicy,
+    sourceText,
+    preservedConstraints: ['前贴时长', '0-1 秒首秒钩子', '末帧衔接原片', '产品或故事锚点'],
+    repairHint: '若首秒弱，把最强冲突、反差或奇观动作提前；若衔接割裂，重写末帧为原片开头的场景、色调或主体动作。',
+    segmentNote: script.transitionPlan,
+  });
 }
 
 async function runIngest(ctx: StepContext<PretrailerInput>) {
@@ -76,13 +154,14 @@ async function runCopyGen(ctx: StepContext<PretrailerInput>) {
     },
   ]);
   const copy = parseModelJson<PretrailerCopy>(response, '广告前贴文案');
-  if (!copy.text || typeof copy.hookAtSec !== 'number') {
+  const normalizedCopy = normalizePretrailerCopy(copy);
+  if (!normalizedCopy.text || typeof normalizedCopy.hookAtSec !== 'number') {
     throw new AppError('E_MODEL_API_FAILED', '广告前贴文案缺少必要字段');
   }
-  if (copy.hookAtSec > 1) {
+  if (normalizedCopy.hookAtSec > 1) {
     throw new AppError('E_INPUT_VALIDATION', '前贴钩子必须在 1 秒内出现');
   }
-  return { artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'copy.json'), copy) };
+  return { artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'copy.json'), normalizedCopy) };
 }
 
 async function runScriptGen(ctx: StepContext<PretrailerInput>) {
@@ -113,11 +192,38 @@ async function runScriptConfirm(ctx: StepContext<PretrailerInput>) {
   return waitForScriptConfirmation(ctx, 'script.json', '广告前贴脚本文案');
 }
 
+function buildPretrailerFinalPrompt(ctx: StepContext<PretrailerInput>, script: PretrailerScript): string {
+  const referencePolicy = buildReferencePolicyText({
+    purpose: '广告前贴生成：根据原片理解生成开场钩子，末帧自然承接原广告。',
+    noReferenceFallback: '当前 Seedance 生成不输入原片作为参考视频，只基于前贴分镜和原片理解生成；不要声称参考了关键帧或参考视频。',
+  });
+  return workflowPrompt(ctx, 'pretrailer.seedance', {
+    scriptJson: buildPretrailerSeedancePrompt(script, referencePolicy),
+    referencePolicy,
+  });
+}
+
+async function runVideoPromptOptimize(ctx: StepContext<PretrailerInput>) {
+  const script = await readJson<PretrailerScript>(artifactPath(ctx.artifactDir, 'script.json'));
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
+      prompt: buildPretrailerFinalPrompt(ctx, script),
+    }),
+  };
+}
+
 async function runSeedance(ctx: StepContext<PretrailerInput>) {
   const script = await readJson<PretrailerScript>(artifactPath(ctx.artifactDir, 'script.json'));
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<PretrailerVideoPrompts>(videoPromptsPath)
+    : undefined;
   await ctx.modelClient.generateVideo({
-    prompt: workflowPrompt(ctx, 'pretrailer.seedance', { scriptJson: JSON.stringify(script) }),
-    durationSec: ctx.input.pretrailerDuration,
+    prompt: videoPrompts?.prompt ?? buildPretrailerFinalPrompt(ctx, script),
+    durationSec: normalizeSeedanceGenerationDuration(ctx.input.pretrailerDuration),
+    resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
+    ratio: '9:16',
+    generateAudio: true,
     outputPath: artifactPath(ctx.artifactDir, 'pretrailer.mp4'),
   });
   return { artifactPath: artifactPath(ctx.artifactDir, 'pretrailer.mp4') };
@@ -159,6 +265,7 @@ export const pretrailerPipeline: PipelineDefinition<PretrailerInput> = {
     { name: 'copy_gen', runStep: runCopyGen },
     { name: 'script_gen', runStep: runScriptGen },
     { name: 'script_confirm', runStep: runScriptConfirm },
+    { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'seedance', runStep: runSeedance },
     { name: 'tts', runStep: runTts },
     { name: 'mux_pretrailer', runStep: runMuxPretrailer },

@@ -5,13 +5,17 @@ import pLimit from 'p-limit';
 
 import { AppError, toAppError } from '../../errors.js';
 import { concatSilentVideos, concatVideos, muxAudioVideo, trimVideo } from '../../media/ffmpeg.js';
-import type { NativeIndustry, NativeInput } from '../../../shared/types.js';
+import { DEFAULT_VIDEO_RESOLUTION, type NativeIndustry, type NativeInput } from '../../../shared/types.js';
 import { NATIVE_INDUSTRY_DEFINITIONS } from '../../../shared/workflows.js';
 import { errorTypeLabel } from '../task-log.js';
 import {
   artifactPath,
+  buildReferencePolicyText,
+  buildSeedancePromptCard,
   parseModelJson,
   readJson,
+  SEEDANCE_MIN_GENERATION_DURATION_SEC,
+  splitDurationForSeedanceGeneration,
   waitForScriptConfirmation,
   workflowPrompt,
   writeJson,
@@ -38,11 +42,17 @@ interface ConceptPlan {
     index: number;
     title: string;
     hook: string;
+    firstSecondHook?: string;
     audience: string;
     sellingPoints: string[];
+    proofPoint?: string;
     modules: string[];
     cta: string;
     tone: string;
+    materialFormula?: string;
+    noveltyAngle?: string;
+    commodityAssetFit?: string;
+    riskControl?: string;
   }>;
 }
 
@@ -53,6 +63,8 @@ interface ScriptBundle {
     script: string;
     voiceover?: string;
     cta: string;
+    hookType?: string;
+    riskControl?: string;
     beats: Array<{ timeSec: number; text: string }>;
   }>;
 }
@@ -60,8 +72,14 @@ interface ScriptBundle {
 interface StoryboardShot {
   index: number;
   durationSec: number;
+  shotType?: 'ai_pretrailer' | 'digital_human' | 'product_demo' | 'atmosphere' | 'cta';
   imagePrompt: string;
   videoPrompt: string;
+  visualAnchor?: string;
+  behaviorState?: string;
+  localTone?: string;
+  videoTheme?: string;
+  referencePolicy?: string;
   voiceoverText?: string;
   module?: string;
 }
@@ -104,6 +122,22 @@ interface NativeAssetSegment {
   failedAt?: number;
 }
 
+interface NativeVideoPromptSegment {
+  index: number;
+  durationSec: number;
+  prompt: string;
+  noReferencePrompt: string;
+}
+
+interface NativeVideoPromptVariant {
+  index: number;
+  segments: NativeVideoPromptSegment[];
+}
+
+interface NativeVideoPrompts {
+  variants: NativeVideoPromptVariant[];
+}
+
 interface NativeAssets {
   assets: NativeAsset[];
   summary?: {
@@ -120,6 +154,18 @@ interface ConsistencyItem {
   pass: boolean;
   issues: string[];
   score: number;
+  scores?: {
+    hook?: number;
+    clarity?: number;
+    story?: number;
+    visualQuality?: number;
+    referenceConsistency?: number;
+    originality?: number;
+    compliance?: number;
+  };
+  repairPrompt?: string;
+  regeneratePolicy?: string;
+  referenceMismatch?: string[];
 }
 
 interface ConsistencyReport {
@@ -132,9 +178,7 @@ interface StoryboardSegment {
   durationSec: number;
 }
 
-const SEEDANCE_MIN_DURATION_SEC = 4;
-const SEEDANCE_MAX_DURATION_SEC = 15;
-
+const SEEDANCE_MIN_DURATION_SEC = SEEDANCE_MIN_GENERATION_DURATION_SEC;
 function createRoute(input: NativeInput): IndustryRoute {
   const definition = NATIVE_INDUSTRY_DEFINITIONS[input.industry];
   const hardRules: IndustryRoute['hardRules'] = {
@@ -230,26 +274,49 @@ function ensureStoryboard(bundle: StoryboardBundle): StoryboardBundle {
   return bundle;
 }
 
-function storyboardPromptText(variant: StoryboardVariant): string {
-  return variant.shots
+function storyboardSourceText(shots: StoryboardShot[]): string {
+  return shots
     .map(
       (shot) =>
-        `镜头 ${shot.index}（${shot.durationSec}s）：${shot.videoPrompt}。场景图：${shot.imagePrompt}。口播参考（仅用于节奏，不生成画面文字）：${shot.voiceoverText ?? ''}。模块：${shot.module ?? ''}`,
+        `镜头 ${shot.index}（${shot.durationSec}s）：${shot.videoPrompt}。场景图：${shot.imagePrompt}。口播参考（仅用于节奏，不生成画面文字）：${shot.voiceoverText ?? ''}。模块：${shot.module ?? ''}。片段类型：${shot.shotType ?? ''}`,
     )
     .join('\n');
 }
 
-function storyboardSegmentPromptText(segment: StoryboardSegment, segmentCount: number): string {
-  const prefix =
+function storyboardPromptText(variant: StoryboardVariant, referencePolicy: string): string {
+  return buildSeedancePromptCard({
+    outputGoal: '六行业原生爆款广告素材生成',
+    visualAnchor: variant.shots.map((shot) => shot.visualAnchor ?? shot.videoPrompt).join('；'),
+    behaviorState: variant.shots.map((shot) => shot.behaviorState ?? shot.videoPrompt).join('；'),
+    localTone: variant.shots.map((shot) => shot.localTone ?? '信息流广告节奏，首秒清晰').join('；'),
+    videoTheme: variant.shots.map((shot) => shot.videoTheme ?? shot.module ?? '行业广告模块').join('；'),
+    referencePolicy,
+    sourceText: storyboardSourceText(variant.shots),
+    preservedConstraints: ['行业公式', '首秒钩子', '商品或剧情识别度', '合规重点', '不生成画面文字'],
+  });
+}
+
+function storyboardSegmentPromptText(
+  segment: StoryboardSegment,
+  segmentCount: number,
+  referencePolicy: string,
+): string {
+  const segmentNote =
     segmentCount > 1
-      ? `当前只生成第 ${segment.index}/${segmentCount} 段，片段时长 ${segment.durationSec}s。请与前后片段保持主体、机位、光线、色彩和节奏连续。如本次输入参考视频，请明确参考该视频的主体位置、动作节奏和运镜连续性。\n`
-      : '';
-  return `${prefix}${segment.shots
-    .map(
-      (shot) =>
-        `镜头 ${shot.index}（${shot.durationSec}s）：${shot.videoPrompt}。场景图：${shot.imagePrompt}。口播参考（仅用于节奏，不生成画面文字）：${shot.voiceoverText ?? ''}。模块：${shot.module ?? ''}`,
-    )
-    .join('\n')}`;
+      ? `当前只生成第 ${segment.index}/${segmentCount} 段，片段时长 ${segment.durationSec}s。请与前后片段保持主体、动作节奏、光线、色彩和情绪连续。`
+      : undefined;
+  return buildSeedancePromptCard({
+    outputGoal: '六行业原生爆款广告素材分段生成',
+    durationSec: segment.durationSec,
+    visualAnchor: segment.shots.map((shot) => shot.visualAnchor ?? shot.videoPrompt).join('；'),
+    behaviorState: segment.shots.map((shot) => shot.behaviorState ?? shot.videoPrompt).join('；'),
+    localTone: segment.shots.map((shot) => shot.localTone ?? '信息流广告节奏，首秒清晰').join('；'),
+    videoTheme: segment.shots.map((shot) => shot.videoTheme ?? shot.module ?? '行业广告模块').join('；'),
+    referencePolicy,
+    sourceText: storyboardSourceText(segment.shots),
+    preservedConstraints: ['行业公式', '首秒钩子', '商品或剧情识别度', '合规重点', '不生成画面文字'],
+    segmentNote,
+  });
 }
 
 function safeName(value: string): string {
@@ -285,22 +352,7 @@ function isReferenceVideoRejected(error: unknown): boolean {
 }
 
 function splitDurationForSeedance(durationSec: number): number[] {
-  const normalizedDuration = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(durationSec));
-  const chunks: number[] = [];
-  let remaining = normalizedDuration;
-  while (remaining > SEEDANCE_MAX_DURATION_SEC) {
-    const remainingAfterMax = remaining - SEEDANCE_MAX_DURATION_SEC;
-    const current =
-      remainingAfterMax > 0 && remainingAfterMax < SEEDANCE_MIN_DURATION_SEC
-        ? SEEDANCE_MAX_DURATION_SEC - (SEEDANCE_MIN_DURATION_SEC - remainingAfterMax)
-        : SEEDANCE_MAX_DURATION_SEC;
-    chunks.push(current);
-    remaining -= current;
-  }
-  if (remaining > 0) {
-    chunks.push(remaining);
-  }
-  return chunks;
+  return splitDurationForSeedanceGeneration(durationSec);
 }
 
 function normalizeVariantShotsForTarget(
@@ -545,11 +597,71 @@ async function runCompliancePre(ctx: StepContext<NativeInput>) {
   };
 }
 
+async function runVideoPromptOptimize(ctx: StepContext<NativeInput>) {
+  const route = await readJson<IndustryRoute>(artifactPath(ctx.artifactDir, 'industry.json'));
+  const storyboard = await readJson<StoryboardBundle>(
+    artifactPath(ctx.artifactDir, 'storyboard.json'),
+  );
+  const targetDurationSec = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec));
+  const promptVariants: NativeVideoPromptVariant[] = storyboard.variants.map((variant) => {
+    const segments = splitVariantForSeedance(variant, targetDurationSec);
+    return {
+      index: variant.index,
+      segments: segments.map((segment) => {
+        const hasReferenceVideo = ctx.input.referenceVideoPath !== undefined || segment.index > 1;
+        const referencePolicy = buildReferencePolicyText({
+          hasReferenceVideo,
+          purpose: `${route.title}行业原生素材「${variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
+        });
+        const noReferencePolicy = buildReferencePolicyText({
+          purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
+          noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
+        });
+        return {
+          index: segment.index,
+          durationSec: segment.durationSec,
+          prompt: workflowPrompt(ctx, 'native.asset_generator', {
+            industryTitle: route.title,
+            title: variant.title,
+            script: variant.script,
+            storyboard:
+              segments.length > 1
+                ? storyboardSegmentPromptText(segment, segments.length, referencePolicy)
+                : storyboardPromptText(variant, referencePolicy),
+            ratio: ctx.input.ratio,
+            referencePolicy,
+          }),
+          noReferencePrompt: workflowPrompt(ctx, 'native.asset_generator', {
+            industryTitle: route.title,
+            title: variant.title,
+            script: variant.script,
+            storyboard:
+              segments.length > 1
+                ? storyboardSegmentPromptText(segment, segments.length, noReferencePolicy)
+                : storyboardPromptText(variant, noReferencePolicy),
+            ratio: ctx.input.ratio,
+            referencePolicy: noReferencePolicy,
+          }),
+        };
+      }),
+    };
+  });
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
+      variants: promptVariants,
+    }),
+  };
+}
+
 async function runAssetGenerator(ctx: StepContext<NativeInput>) {
   const route = await readJson<IndustryRoute>(artifactPath(ctx.artifactDir, 'industry.json'));
   const storyboard = await readJson<StoryboardBundle>(
     artifactPath(ctx.artifactDir, 'storyboard.json'),
   );
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<NativeVideoPrompts>(videoPromptsPath)
+    : undefined;
   const limit = pLimit(4);
   const targetDurationSec = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec));
   const assetsPath = artifactPath(ctx.artifactDir, 'assets.json');
@@ -645,21 +757,35 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                   `asset_variant_${variant.index}_part_${segment.index}.mp4`,
                 )
               : generatedVideoPath;
+          const referencePolicy = buildReferencePolicyText({
+            hasReferenceVideo: nextReferencePath !== undefined,
+            purpose: `${route.title}行业原生素材「${variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
+          });
+          const noReferencePolicy = buildReferencePolicyText({
+            purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
+            noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
+          });
+          const optimizedSegment = videoPrompts?.variants
+            .find((item) => item.index === variant.index)
+            ?.segments.find((item) => item.index === segment.index);
           const videoRequest = {
-            prompt: workflowPrompt(ctx, 'native.asset_generator', {
-              industryTitle: route.title,
-              title: variant.title,
-              script: variant.script,
-              storyboard:
-                segments.length > 1
-                  ? storyboardSegmentPromptText(segment, segments.length)
-                  : storyboardPromptText(variant),
-              ratio: ctx.input.ratio,
-            }),
+            prompt:
+              optimizedSegment?.prompt ??
+              workflowPrompt(ctx, 'native.asset_generator', {
+                industryTitle: route.title,
+                title: variant.title,
+                script: variant.script,
+                storyboard:
+                  segments.length > 1
+                    ? storyboardSegmentPromptText(segment, segments.length, referencePolicy)
+                    : storyboardPromptText(variant, referencePolicy),
+                ratio: ctx.input.ratio,
+                referencePolicy,
+              }),
             durationSec: segment.durationSec,
-            resolution: ctx.input.ratio === '16:9' ? '1080p' : '720p',
+            resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
             ratio: ctx.input.ratio,
-            generateAudio: !shouldMuxVoiceover,
+            generateAudio: true,
             outputPath: segmentPath,
             ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
           };
@@ -717,11 +843,23 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             });
             try {
               await ctx.modelClient.generateVideo({
-                prompt: videoRequest.prompt,
+                prompt:
+                  optimizedSegment?.noReferencePrompt ??
+                  workflowPrompt(ctx, 'native.asset_generator', {
+                    industryTitle: route.title,
+                    title: variant.title,
+                    script: variant.script,
+                    storyboard:
+                      segments.length > 1
+                        ? storyboardSegmentPromptText(segment, segments.length, noReferencePolicy)
+                        : storyboardPromptText(variant, noReferencePolicy),
+                    ratio: ctx.input.ratio,
+                    referencePolicy: noReferencePolicy,
+                  }),
                 durationSec: videoRequest.durationSec,
                 resolution: videoRequest.resolution,
                 ratio: videoRequest.ratio,
-                generateAudio: videoRequest.generateAudio,
+                generateAudio: true,
                 outputPath: videoRequest.outputPath,
               });
             } catch (fallbackError) {
@@ -1035,6 +1173,12 @@ async function runConsistencyChecker(ctx: StepContext<NativeInput>) {
       pass: check.pass,
       issues: Array.isArray(check.issues) ? check.issues : [],
       score: typeof check.score === 'number' ? check.score : 0,
+      ...(check.scores !== undefined ? { scores: check.scores } : {}),
+      ...(check.repairPrompt !== undefined ? { repairPrompt: check.repairPrompt } : {}),
+      ...(check.regeneratePolicy !== undefined ? { regeneratePolicy: check.regeneratePolicy } : {}),
+      ...(Array.isArray(check.referenceMismatch)
+        ? { referenceMismatch: check.referenceMismatch }
+        : {}),
     });
   }
 
@@ -1102,6 +1246,7 @@ export const nativePipeline: PipelineDefinition<NativeInput> = {
     { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'storyboard_builder', runStep: runStoryboardBuilder },
     { name: 'compliance_pre', runStep: runCompliancePre },
+    { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'asset_generator', runStep: runAssetGenerator },
     { name: 'consistency_checker', runStep: runConsistencyChecker },
     { name: 'composer', runStep: runComposer },

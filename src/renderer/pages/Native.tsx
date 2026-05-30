@@ -3,7 +3,13 @@ import { FolderOpenOutlined, RocketOutlined } from '@ant-design/icons';
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
-import type { NativeIndustry, NativeRatio } from '../../shared/types.js';
+import {
+  DEFAULT_VIDEO_RESOLUTION,
+  VIDEO_RESOLUTION_OPTIONS,
+  type NativeIndustry,
+  type NativeRatio,
+  type VideoResolution,
+} from '../../shared/types.js';
 import { NATIVE_INDUSTRY_DEFINITIONS } from '../../shared/workflows.js';
 
 interface FormValues {
@@ -14,6 +20,7 @@ interface FormValues {
   variantCount: number;
   durationSec: number;
   ratio: NativeRatio;
+  resolution: VideoResolution;
 }
 
 const INDUSTRY_OPTIONS = Object.values(NATIVE_INDUSTRY_DEFINITIONS).map((definition) => ({
@@ -64,6 +71,7 @@ export function Native() {
         variantCount: values.variantCount,
         durationSec: values.durationSec,
         ratio: values.ratio,
+        resolution: values.resolution,
       },
     });
     form.resetFields();
@@ -92,6 +100,7 @@ export function Native() {
             variantCount: 1,
             durationSec: 15,
             ratio: '9:16',
+            resolution: DEFAULT_VIDEO_RESOLUTION,
           }}
           onFinish={(values) => void submit(values)}
         >
@@ -111,6 +120,9 @@ export function Native() {
           </div>
           <Form.Item name="ratio" label="视频比例" rules={[{ required: true }]}>
             <Radio.Group optionType="button" buttonStyle="solid" options={RATIO_OPTIONS} />
+          </Form.Item>
+          <Form.Item name="resolution" label="生成分辨率" rules={[{ required: true }]}>
+            <Radio.Group optionType="button" buttonStyle="solid" options={VIDEO_RESOLUTION_OPTIONS} />
           </Form.Item>
           <Form.Item label="参考视频">
             <Space.Compact className="full-width">

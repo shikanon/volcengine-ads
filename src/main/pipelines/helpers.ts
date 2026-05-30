@@ -26,6 +26,100 @@ export function artifactPath(artifactDir: string, name: string): string {
   return join(artifactDir, name);
 }
 
+export const SEEDANCE_MIN_GENERATION_DURATION_SEC = 4;
+export const SEEDANCE_MAX_GENERATION_DURATION_SEC = 15;
+
+export function normalizeSeedanceGenerationDuration(durationSec: number | undefined, fallback = 10): number {
+  const value = durationSec === undefined || !Number.isFinite(durationSec) ? fallback : durationSec;
+  return Math.min(
+    SEEDANCE_MAX_GENERATION_DURATION_SEC,
+    Math.max(SEEDANCE_MIN_GENERATION_DURATION_SEC, Math.round(value)),
+  );
+}
+
+export function splitDurationForSeedanceGeneration(durationSec: number): number[] {
+  const chunks: number[] = [];
+  let remaining = Math.max(SEEDANCE_MIN_GENERATION_DURATION_SEC, Math.round(durationSec));
+  while (remaining > SEEDANCE_MAX_GENERATION_DURATION_SEC) {
+    const remainingAfterMax = remaining - SEEDANCE_MAX_GENERATION_DURATION_SEC;
+    const current =
+      remainingAfterMax > 0 && remainingAfterMax < SEEDANCE_MIN_GENERATION_DURATION_SEC
+        ? SEEDANCE_MAX_GENERATION_DURATION_SEC -
+          (SEEDANCE_MIN_GENERATION_DURATION_SEC - remainingAfterMax)
+        : SEEDANCE_MAX_GENERATION_DURATION_SEC;
+    chunks.push(current);
+    remaining -= current;
+  }
+  if (remaining > 0) {
+    chunks.push(normalizeSeedanceGenerationDuration(remaining));
+  }
+  return chunks;
+}
+
+export interface ReferencePolicyInput {
+  hasReferenceVideo?: boolean;
+  hasReferenceImages?: boolean;
+  hasProductImages?: boolean;
+  hasAvatarImage?: boolean;
+  purpose: string;
+  noReferenceFallback?: string;
+}
+
+export interface SeedancePromptCardInput {
+  outputGoal: string;
+  ratio?: string;
+  durationSec?: number;
+  visualAnchor: string;
+  behaviorState: string;
+  localTone: string;
+  videoTheme: string;
+  referencePolicy: string;
+  sourceText?: string | undefined;
+  preservedConstraints?: string[];
+  forbidden?: string[];
+  repairHint?: string;
+  segmentNote?: string | undefined;
+}
+
+export function buildReferencePolicyText(input: ReferencePolicyInput): string {
+  const policies: string[] = [`本次生成目的：${input.purpose}。`];
+  if (input.hasProductImages === true) {
+    policies.push('商品图优先级最高：保持商品外观、颜色、包装轮廓和可读文字不变形。');
+  }
+  if (input.hasAvatarImage === true) {
+    policies.push('人物/数字人参考图只参考五官、发型、年龄感、服装和可信气质，不复制背景。');
+  }
+  if (input.hasReferenceImages === true) {
+    policies.push('参考图用于稳定人物、商品、场景或风格锚点，不扩写图片中不存在的品牌承诺。');
+  }
+  if (input.hasReferenceVideo === true) {
+    policies.push('参考该视频的主体位置、动作节奏、镜头连续性和转场衔接，不复制具体人物身份、场景和画面。');
+  }
+  if (input.hasReferenceVideo !== true && input.hasReferenceImages !== true && input.hasProductImages !== true && input.hasAvatarImage !== true) {
+    policies.push(input.noReferenceFallback ?? '本次没有可用参考素材，必须只基于脚本、分镜和任务上下文生成，不要声称参考了视频或图片。');
+  }
+  return policies.join('\n');
+}
+
+export function buildSeedancePromptCard(input: SeedancePromptCardInput): string {
+  const lines = [
+    `输出目标：${input.outputGoal}`,
+    input.ratio !== undefined ? `画幅：${input.ratio}` : undefined,
+    input.durationSec !== undefined ? `时长：${input.durationSec}s` : undefined,
+    input.segmentNote,
+    `visualAnchor：${input.visualAnchor}`,
+    `behaviorState：${input.behaviorState}`,
+    `localTone：${input.localTone}`,
+    `videoTheme：${input.videoTheme}`,
+    `referencePolicy：${input.referencePolicy}`,
+    input.sourceText !== undefined ? `sourceText：${input.sourceText}` : undefined,
+    `preservedConstraints：${(input.preservedConstraints ?? ['用户明确要求、对白、旁白、音乐、音效、画幅、时长、产品露出']).join('；')}`,
+    `forbidden：${(input.forbidden ?? ['不要生成不可控文字、水印、错别字、虚假承诺、夸大功效、和参考视频过度相似的画面']).join('；')}`,
+    `repairHint：${input.repairHint ?? '若首秒弱，优先把冲突动作或核心卖点提前到 0-1 秒；若参考不一致，明确对应参考素材只借什么。'}`,
+  ];
+  return lines.filter((line): line is string => typeof line === 'string' && line.length > 0).join('\n');
+}
+
 export function waitForScriptConfirmation(
   ctx: StepContext,
   artifactName: string,
