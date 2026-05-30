@@ -74,6 +74,10 @@ interface AvatarVideoSegment {
   lipSyncOffsetMs?: number;
 }
 
+interface AvatarVideoPrompts {
+  basePrompt: string;
+}
+
 const DIGITAL_HUMAN_MIN_DURATION_SEC = 4;
 const DIGITAL_HUMAN_MAX_DURATION_SEC = 15;
 
@@ -324,8 +328,7 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
   ];
 }
 
-async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
-  const audioSegments = await ensureDigitalHumanAudio(ctx);
+async function buildAvatarBasePrompt(ctx: StepContext<AvatarInput>): Promise<string> {
   const scriptPath = artifactPath(ctx.artifactDir, 'script.json');
   const script = existsSync(scriptPath) ? await readJson<AvatarScript>(scriptPath) : undefined;
   const referencePolicy = buildReferencePolicyText({
@@ -333,7 +336,7 @@ async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
     hasProductImages: ctx.input.productImagePaths.length > 0,
     purpose: '数字人口播广告生成：音频驱动唇形，人物可信出镜，产品露出服务转化。',
   });
-  const basePrompt = `${workflowPrompt(ctx, 'avatar.seedance_avatar')}\n${buildSeedancePromptCard({
+  return `${workflowPrompt(ctx, 'avatar.seedance_avatar')}\n${buildSeedancePromptCard({
     outputGoal: '转化型数字人口播广告',
     durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
     visualAnchor: `参考数字人形象；产品图数量 ${ctx.input.productImagePaths.length}`,
@@ -346,6 +349,23 @@ async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
     forbidden: ['不要改变人物身份', '不要夸大产品效果', '不要生成水印、字幕或不可控文字'],
     repairHint: '若唇形或人物不稳定，降低动作幅度并强调正面半身；若产品露出弱，改为画中画或产品贴片。',
   })}`;
+}
+
+async function runVideoPromptOptimize(ctx: StepContext<AvatarInput>) {
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
+      basePrompt: await buildAvatarBasePrompt(ctx),
+    }),
+  };
+}
+
+async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
+  const audioSegments = await ensureDigitalHumanAudio(ctx);
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<AvatarVideoPrompts>(videoPromptsPath)
+    : undefined;
+  const basePrompt = videoPrompts?.basePrompt ?? (await buildAvatarBasePrompt(ctx));
   const videoSegments: AvatarVideoSegment[] = [];
   for (const segment of audioSegments) {
     const outputPath =
@@ -432,6 +452,7 @@ export const avatarPipeline: PipelineDefinition<AvatarInput> = {
     { name: 'script_gen', runStep: runScriptGen },
     { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'tts', runStep: runTts },
+    { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'seedance_avatar', runStep: runSeedanceAvatar },
     { name: 'overlay', runStep: runOverlay },
     { name: 'postprocess', runStep: runPostprocess },

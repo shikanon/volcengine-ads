@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 
 import { AppError } from '../../errors.js';
@@ -67,6 +68,10 @@ interface PretrailerScript {
     localTone?: string;
     videoTheme?: string;
   }>;
+}
+
+interface PretrailerVideoPrompts {
+  prompt: string;
 }
 
 function normalizePretrailerCopy(copy: PretrailerCopy): PretrailerCopy {
@@ -185,17 +190,34 @@ async function runScriptConfirm(ctx: StepContext<PretrailerInput>) {
   return waitForScriptConfirmation(ctx, 'script.json', '广告前贴脚本文案');
 }
 
-async function runSeedance(ctx: StepContext<PretrailerInput>) {
-  const script = await readJson<PretrailerScript>(artifactPath(ctx.artifactDir, 'script.json'));
+function buildPretrailerFinalPrompt(ctx: StepContext<PretrailerInput>, script: PretrailerScript): string {
   const referencePolicy = buildReferencePolicyText({
     purpose: '广告前贴生成：根据原片理解生成开场钩子，末帧自然承接原广告。',
     noReferenceFallback: '当前 Seedance 生成不输入原片作为参考视频，只基于前贴分镜和原片理解生成；不要声称参考了关键帧或参考视频。',
   });
-  await ctx.modelClient.generateVideo({
-    prompt: workflowPrompt(ctx, 'pretrailer.seedance', {
-      scriptJson: buildPretrailerSeedancePrompt(script, referencePolicy),
-      referencePolicy,
+  return workflowPrompt(ctx, 'pretrailer.seedance', {
+    scriptJson: buildPretrailerSeedancePrompt(script, referencePolicy),
+    referencePolicy,
+  });
+}
+
+async function runVideoPromptOptimize(ctx: StepContext<PretrailerInput>) {
+  const script = await readJson<PretrailerScript>(artifactPath(ctx.artifactDir, 'script.json'));
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
+      prompt: buildPretrailerFinalPrompt(ctx, script),
     }),
+  };
+}
+
+async function runSeedance(ctx: StepContext<PretrailerInput>) {
+  const script = await readJson<PretrailerScript>(artifactPath(ctx.artifactDir, 'script.json'));
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<PretrailerVideoPrompts>(videoPromptsPath)
+    : undefined;
+  await ctx.modelClient.generateVideo({
+    prompt: videoPrompts?.prompt ?? buildPretrailerFinalPrompt(ctx, script),
     durationSec: ctx.input.pretrailerDuration,
     ratio: '9:16',
     outputPath: artifactPath(ctx.artifactDir, 'pretrailer.mp4'),
@@ -239,6 +261,7 @@ export const pretrailerPipeline: PipelineDefinition<PretrailerInput> = {
     { name: 'copy_gen', runStep: runCopyGen },
     { name: 'script_gen', runStep: runScriptGen },
     { name: 'script_confirm', runStep: runScriptConfirm },
+    { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'seedance', runStep: runSeedance },
     { name: 'tts', runStep: runTts },
     { name: 'mux_pretrailer', runStep: runMuxPretrailer },

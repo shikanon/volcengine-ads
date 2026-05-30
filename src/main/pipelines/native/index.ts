@@ -120,6 +120,22 @@ interface NativeAssetSegment {
   failedAt?: number;
 }
 
+interface NativeVideoPromptSegment {
+  index: number;
+  durationSec: number;
+  prompt: string;
+  noReferencePrompt: string;
+}
+
+interface NativeVideoPromptVariant {
+  index: number;
+  segments: NativeVideoPromptSegment[];
+}
+
+interface NativeVideoPrompts {
+  variants: NativeVideoPromptVariant[];
+}
+
 interface NativeAssets {
   assets: NativeAsset[];
   summary?: {
@@ -596,11 +612,71 @@ async function runCompliancePre(ctx: StepContext<NativeInput>) {
   };
 }
 
+async function runVideoPromptOptimize(ctx: StepContext<NativeInput>) {
+  const route = await readJson<IndustryRoute>(artifactPath(ctx.artifactDir, 'industry.json'));
+  const storyboard = await readJson<StoryboardBundle>(
+    artifactPath(ctx.artifactDir, 'storyboard.json'),
+  );
+  const targetDurationSec = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec));
+  const promptVariants: NativeVideoPromptVariant[] = storyboard.variants.map((variant) => {
+    const segments = splitVariantForSeedance(variant, targetDurationSec);
+    return {
+      index: variant.index,
+      segments: segments.map((segment) => {
+        const hasReferenceVideo = ctx.input.referenceVideoPath !== undefined || segment.index > 1;
+        const referencePolicy = buildReferencePolicyText({
+          hasReferenceVideo,
+          purpose: `${route.title}行业原生素材「${variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
+        });
+        const noReferencePolicy = buildReferencePolicyText({
+          purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
+          noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
+        });
+        return {
+          index: segment.index,
+          durationSec: segment.durationSec,
+          prompt: workflowPrompt(ctx, 'native.asset_generator', {
+            industryTitle: route.title,
+            title: variant.title,
+            script: variant.script,
+            storyboard:
+              segments.length > 1
+                ? storyboardSegmentPromptText(segment, segments.length, referencePolicy)
+                : storyboardPromptText(variant, referencePolicy),
+            ratio: ctx.input.ratio,
+            referencePolicy,
+          }),
+          noReferencePrompt: workflowPrompt(ctx, 'native.asset_generator', {
+            industryTitle: route.title,
+            title: variant.title,
+            script: variant.script,
+            storyboard:
+              segments.length > 1
+                ? storyboardSegmentPromptText(segment, segments.length, noReferencePolicy)
+                : storyboardPromptText(variant, noReferencePolicy),
+            ratio: ctx.input.ratio,
+            referencePolicy: noReferencePolicy,
+          }),
+        };
+      }),
+    };
+  });
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
+      variants: promptVariants,
+    }),
+  };
+}
+
 async function runAssetGenerator(ctx: StepContext<NativeInput>) {
   const route = await readJson<IndustryRoute>(artifactPath(ctx.artifactDir, 'industry.json'));
   const storyboard = await readJson<StoryboardBundle>(
     artifactPath(ctx.artifactDir, 'storyboard.json'),
   );
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<NativeVideoPrompts>(videoPromptsPath)
+    : undefined;
   const limit = pLimit(4);
   const targetDurationSec = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec));
   const assetsPath = artifactPath(ctx.artifactDir, 'assets.json');
@@ -704,18 +780,23 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
             noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
           });
+          const optimizedSegment = videoPrompts?.variants
+            .find((item) => item.index === variant.index)
+            ?.segments.find((item) => item.index === segment.index);
           const videoRequest = {
-            prompt: workflowPrompt(ctx, 'native.asset_generator', {
-              industryTitle: route.title,
-              title: variant.title,
-              script: variant.script,
-              storyboard:
-                segments.length > 1
-                  ? storyboardSegmentPromptText(segment, segments.length, referencePolicy)
-                  : storyboardPromptText(variant, referencePolicy),
-              ratio: ctx.input.ratio,
-              referencePolicy,
-            }),
+            prompt:
+              optimizedSegment?.prompt ??
+              workflowPrompt(ctx, 'native.asset_generator', {
+                industryTitle: route.title,
+                title: variant.title,
+                script: variant.script,
+                storyboard:
+                  segments.length > 1
+                    ? storyboardSegmentPromptText(segment, segments.length, referencePolicy)
+                    : storyboardPromptText(variant, referencePolicy),
+                ratio: ctx.input.ratio,
+                referencePolicy,
+              }),
             durationSec: segment.durationSec,
             resolution: ctx.input.ratio === '16:9' ? '1080p' : '720p',
             ratio: ctx.input.ratio,
@@ -777,17 +858,19 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             });
             try {
               await ctx.modelClient.generateVideo({
-                prompt: workflowPrompt(ctx, 'native.asset_generator', {
-                  industryTitle: route.title,
-                  title: variant.title,
-                  script: variant.script,
-                  storyboard:
-                    segments.length > 1
-                      ? storyboardSegmentPromptText(segment, segments.length, noReferencePolicy)
-                      : storyboardPromptText(variant, noReferencePolicy),
-                  ratio: ctx.input.ratio,
-                  referencePolicy: noReferencePolicy,
-                }),
+                prompt:
+                  optimizedSegment?.noReferencePrompt ??
+                  workflowPrompt(ctx, 'native.asset_generator', {
+                    industryTitle: route.title,
+                    title: variant.title,
+                    script: variant.script,
+                    storyboard:
+                      segments.length > 1
+                        ? storyboardSegmentPromptText(segment, segments.length, noReferencePolicy)
+                        : storyboardPromptText(variant, noReferencePolicy),
+                    ratio: ctx.input.ratio,
+                    referencePolicy: noReferencePolicy,
+                  }),
                 durationSec: videoRequest.durationSec,
                 resolution: videoRequest.resolution,
                 ratio: videoRequest.ratio,
@@ -1178,6 +1261,7 @@ export const nativePipeline: PipelineDefinition<NativeInput> = {
     { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'storyboard_builder', runStep: runStoryboardBuilder },
     { name: 'compliance_pre', runStep: runCompliancePre },
+    { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'asset_generator', runStep: runAssetGenerator },
     { name: 'consistency_checker', runStep: runConsistencyChecker },
     { name: 'composer', runStep: runComposer },

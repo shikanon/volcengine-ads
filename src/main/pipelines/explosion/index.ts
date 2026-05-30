@@ -93,6 +93,22 @@ interface FinalVideoOutput {
   audioSource: 'source_audio' | 'seedance';
 }
 
+interface ExplosionVideoPromptSegment {
+  index: number;
+  durationSec: number;
+  prompt: string;
+  noReferencePrompt: string;
+}
+
+interface ExplosionVideoPromptVariant {
+  index: number;
+  segments: ExplosionVideoPromptSegment[];
+}
+
+interface ExplosionVideoPrompts {
+  variants: ExplosionVideoPromptVariant[];
+}
+
 function isReferenceVideoRejected(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /InputVideoSensitiveContentDetected|real person|reference_video|video duration|video pixel/iu.test(message);
@@ -345,11 +361,71 @@ async function runScriptConfirm(ctx: StepContext<ExplosionInput>) {
   return waitForScriptConfirmation(ctx, 'variants.md', '爆款裂变脚本文案');
 }
 
+async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
+  const variants = await readJson<Variant[]>(artifactPath(ctx.artifactDir, 'variants.json'));
+  const scriptParsePath = artifactPath(ctx.artifactDir, 'script_parse.json');
+  const scriptParse = existsSync(scriptParsePath)
+    ? await readJson<ScriptParse>(scriptParsePath)
+    : undefined;
+  const promptVariants: ExplosionVideoPromptVariant[] = [];
+
+  for (const variant of variants) {
+    const segments = splitStoryboardForSeedance(variant.storyboard);
+    const promptSegments = segments.map((segment) => {
+      const referencePolicy = buildReferencePolicyText({
+        hasReferenceVideo: true,
+        purpose: scriptParse?.referencePolicy ?? '爆款裂变生成：保留原片结构、节奏和转化触发点，替换非核心画面。',
+      });
+      const noReferencePolicy = buildReferencePolicyText({
+        purpose: '爆款裂变无参考视频生成：只基于脚本和分镜生成差异化广告画面。',
+        noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和爆款结构生成，不要声称参考了视频。',
+      });
+      return {
+        index: segment.index,
+        durationSec: segment.durationSec,
+        prompt: workflowPrompt(ctx, 'explosion.seedance', {
+          copy: variant.copy,
+          script: variant.script,
+          storyboard: buildStoryboardPrompt(
+            segment.shots,
+            segment.index,
+            segments.length,
+            referencePolicy,
+          ),
+          referencePolicy,
+        }),
+        noReferencePrompt: workflowPrompt(ctx, 'explosion.seedance', {
+          copy: variant.copy,
+          script: variant.script,
+          storyboard: buildStoryboardPrompt(
+            segment.shots,
+            segment.index,
+            segments.length,
+            noReferencePolicy,
+          ),
+          referencePolicy: noReferencePolicy,
+        }),
+      };
+    });
+    promptVariants.push({ index: variant.index, segments: promptSegments });
+  }
+
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
+      variants: promptVariants,
+    }),
+  };
+}
+
 async function runSeedance(ctx: StepContext<ExplosionInput>) {
   const variants = await readJson<Variant[]>(artifactPath(ctx.artifactDir, 'variants.json'));
   const scriptParsePath = artifactPath(ctx.artifactDir, 'script_parse.json');
   const scriptParse = existsSync(scriptParsePath)
     ? await readJson<ScriptParse>(scriptParsePath)
+    : undefined;
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<ExplosionVideoPrompts>(videoPromptsPath)
     : undefined;
   const referencePath = await trimVideo(
     artifactPath(ctx.artifactDir, 'source.mp4'),
@@ -379,19 +455,24 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         purpose: '爆款裂变无参考视频生成：只基于脚本和分镜生成差异化广告画面。',
         noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和爆款结构生成，不要声称参考了视频。',
       });
+      const optimizedSegment = videoPrompts?.variants
+        .find((item) => item.index === variant.index)
+        ?.segments.find((item) => item.index === segment.index);
       const request: SeedanceVideoRequest = {
         ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
-        prompt: workflowPrompt(ctx, 'explosion.seedance', {
-          copy: variant.copy,
-          script: variant.script,
-          storyboard: buildStoryboardPrompt(
-            segment.shots,
-            segment.index,
-            segments.length,
+        prompt:
+          optimizedSegment?.prompt ??
+          workflowPrompt(ctx, 'explosion.seedance', {
+            copy: variant.copy,
+            script: variant.script,
+            storyboard: buildStoryboardPrompt(
+              segment.shots,
+              segment.index,
+              segments.length,
+              referencePolicy,
+            ),
             referencePolicy,
-          ),
-          referencePolicy,
-        }),
+          }),
         durationSec,
         resolution,
         ratio: '9:16',
@@ -406,17 +487,19 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         }
         usedReferenceVideo = false;
         await ctx.modelClient.generateVideo({
-          prompt: workflowPrompt(ctx, 'explosion.seedance', {
-            copy: variant.copy,
-            script: variant.script,
-            storyboard: buildStoryboardPrompt(
-              segment.shots,
-              segment.index,
-              segments.length,
-              noReferencePolicy,
-            ),
-            referencePolicy: noReferencePolicy,
-          }),
+          prompt:
+            optimizedSegment?.noReferencePrompt ??
+            workflowPrompt(ctx, 'explosion.seedance', {
+              copy: variant.copy,
+              script: variant.script,
+              storyboard: buildStoryboardPrompt(
+                segment.shots,
+                segment.index,
+                segments.length,
+                noReferencePolicy,
+              ),
+              referencePolicy: noReferencePolicy,
+            }),
           durationSec,
           resolution,
           ratio: request.ratio ?? '9:16',
@@ -493,6 +576,7 @@ export const explosionPipeline: PipelineDefinition<ExplosionInput> = {
     { name: 'script_parse', runStep: runScriptParse },
     { name: 'rewrite', runStep: runRewrite },
     { name: 'script_confirm', runStep: runScriptConfirm },
+    { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'seedance', runStep: runSeedance },
     { name: 'audio_replace', runStep: runAudioReplace },
   ],
