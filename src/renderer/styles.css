@@ -1742,6 +1742,13 @@ body,
   gap: var(--space-xs);
 }
 
+.prompt-context-tags {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
 .prompt-vars code {
   padding: 0.1875rem var(--space-xs);
   border-radius: var(--radius-sm);

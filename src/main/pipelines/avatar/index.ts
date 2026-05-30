@@ -6,6 +6,8 @@ import { concatVideos, overlayProductImages, transcodeAudioToMp3 } from '../../m
 import type { AvatarInput } from '../../../shared/types.js';
 import {
   artifactPath,
+  buildReferencePolicyText,
+  buildSeedancePromptCard,
   parseModelJson,
   readJson,
   waitForScriptConfirmation,
@@ -17,24 +19,43 @@ import type { PipelineDefinition, StepContext } from '../types.js';
 interface AvatarValidation {
   valid: boolean;
   reason: string;
+  credibility?: string;
+  risks?: string[];
 }
 
 interface BrandParse {
   tone: string;
   audience: string;
+  audiencePain?: string;
+  oneLineBenefit?: string;
   differentiators: string[];
+  proofPoints?: string[];
+  forbiddenClaims?: string[];
 }
 
 interface ProductUnderstanding {
   shape: string;
   color: string;
   sellingPoints: string[];
+  visibleProofPoints?: string[];
+  requiredVisualElements?: string[];
+  forbiddenClaims?: string[];
+  visualRisks?: string[];
 }
 
 interface AvatarScript {
   text: string;
+  hookType?: 'pain_question' | 'benefit' | 'contrast' | 'micro_story';
   differentiators: string[];
-  timeline: Array<{ sellingPoint: string; atSec: number; productImageIndex: number }>;
+  ttsNotes?: string;
+  avatarSceneType?: 'single_talking' | 'product_overlay' | 'picture_in_picture' | 'desk_demo';
+  timeline: Array<{
+    sellingPoint: string;
+    atSec: number;
+    productImageIndex: number;
+    visualAction?: string;
+  }>;
+  riskControl?: string;
 }
 
 interface AvatarAudioSegment {
@@ -185,7 +206,7 @@ async function runBrandParse(ctx: StepContext<AvatarInput>) {
   const response = await ctx.modelClient.chat([
     {
       role: 'system',
-      content: '你是品牌策略解析助手，只输出合法 JSON。',
+      content: '你是品牌策略解析助手。先内部分析人群、痛点、证据和禁用承诺，不输出推理链；只输出合法 JSON。',
     },
     {
       role: 'user',
@@ -208,7 +229,7 @@ async function runScriptGen(ctx: StepContext<AvatarInput>) {
     {
       role: 'system',
       content:
-        '你是电商数字人口播编导。只输出 JSON：{"text":"...","differentiators":["...","..."],"timeline":[{"sellingPoint":"...","atSec":4,"productImageIndex":0}]}。',
+        '你是转化型数字人口播编导。先内部比较痛点设问、福利利益、对比反差和轻剧情方向，不输出推理链；只输出 JSON：{"text":"...","hookType":"pain_question|benefit|contrast|micro_story","differentiators":["...","..."],"ttsNotes":"...","avatarSceneType":"single_talking|product_overlay|picture_in_picture|desk_demo","timeline":[{"sellingPoint":"...","atSec":4,"productImageIndex":0,"visualAction":"..."}],"riskControl":"..."}。',
     },
     {
       role: 'user',
@@ -305,7 +326,26 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
 
 async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
   const audioSegments = await ensureDigitalHumanAudio(ctx);
-  const basePrompt = workflowPrompt(ctx, 'avatar.seedance_avatar');
+  const scriptPath = artifactPath(ctx.artifactDir, 'script.json');
+  const script = existsSync(scriptPath) ? await readJson<AvatarScript>(scriptPath) : undefined;
+  const referencePolicy = buildReferencePolicyText({
+    hasAvatarImage: true,
+    hasProductImages: ctx.input.productImagePaths.length > 0,
+    purpose: '数字人口播广告生成：音频驱动唇形，人物可信出镜，产品露出服务转化。',
+  });
+  const basePrompt = `${workflowPrompt(ctx, 'avatar.seedance_avatar')}\n${buildSeedancePromptCard({
+    outputGoal: '转化型数字人口播广告',
+    durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+    visualAnchor: `参考数字人形象；产品图数量 ${ctx.input.productImagePaths.length}`,
+    behaviorState: script?.avatarSceneType ?? 'single_talking',
+    localTone: '可信、自然、清晰、轻微手势，眼神稳定看向镜头',
+    videoTheme: script?.hookType ?? '数字人口播转化广告',
+    referencePolicy,
+    sourceText: script?.text,
+    preservedConstraints: ['参考音频', '唇形同步', '人物身份一致', '产品露出时间轴'],
+    forbidden: ['不要改变人物身份', '不要夸大产品效果', '不要生成水印、字幕或不可控文字'],
+    repairHint: '若唇形或人物不稳定，降低动作幅度并强调正面半身；若产品露出弱，改为画中画或产品贴片。',
+  })}`;
   const videoSegments: AvatarVideoSegment[] = [];
   for (const segment of audioSegments) {
     const outputPath =

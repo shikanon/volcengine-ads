@@ -4,7 +4,10 @@ import { getStepNames } from '../../src/main/pipelines/index.js';
 import {
   AD_CREATIVE_STRUCTURE_PROMPT,
   AD_MATERIAL_QUALITY_PROMPT,
+  PRIVATE_REASONING_PROMPT,
   SEEDANCE_DIRECTOR_PROMPT,
+  SEEDANCE_PROMPT_CARD_PROMPT,
+  SEEDANCE_VC_ROUTER_PROMPT,
   VIDEO_COMPOSITION_PROMPT,
   VIDEO_TEXT_STICKER_PROMPT,
   getDefaultWorkflowPrompts,
@@ -98,7 +101,6 @@ describe('pipeline step contracts', () => {
       'native.asset_generator',
     ];
     const seedancePromptIds: WorkflowPromptId[] = [
-      'explosion.script_parse',
       'explosion.rewrite',
       'explosion.seedance',
       'pretrailer.script_gen',
@@ -145,5 +147,60 @@ describe('pipeline step contracts', () => {
     expect(prompts['explosion.script_parse']).toContain('直接观看完整广告视频');
     expect(prompts['pretrailer.understand']).toContain('直接观看完整广告视频');
     expect(prompts['pretrailer.understand']).toContain('禁止把视频抽帧成图片');
+  });
+
+  it('keeps VLM and LLM analysis private while emitting JSON only', () => {
+    const prompts = getDefaultWorkflowPrompts();
+    const privateReasoningPromptIds: WorkflowPromptId[] = [
+      'explosion.script_parse',
+      'explosion.rewrite',
+      'pretrailer.understand',
+      'pretrailer.copy_gen',
+      'pretrailer.script_gen',
+      'avatar.validate_avatar',
+      'avatar.product_understand',
+      'avatar.brand_parse',
+      'avatar.script_gen',
+      'native.concept_plan',
+      'native.script_writer',
+      'native.storyboard_builder',
+      'native.consistency_checker',
+    ];
+
+    for (const id of privateReasoningPromptIds) {
+      expect(prompts[id]).toContain(PRIVATE_REASONING_PROMPT);
+      expect(prompts[id]).toContain('不要输出推理链');
+      expect(prompts[id]).toContain('只输出');
+    }
+  });
+
+  it('routes Seedance prompts through Vibe Creating and reference policy contracts', () => {
+    const prompts = getDefaultWorkflowPrompts();
+    const seedancePromptIds: WorkflowPromptId[] = [
+      'explosion.seedance',
+      'pretrailer.seedance',
+      'avatar.seedance_avatar',
+      'native.asset_generator',
+    ];
+    const storyboardPromptIds: WorkflowPromptId[] = [
+      'explosion.rewrite',
+      'pretrailer.script_gen',
+      'native.storyboard_builder',
+    ];
+
+    for (const id of seedancePromptIds) {
+      expect(prompts[id]).toContain(SEEDANCE_VC_ROUTER_PROMPT);
+      expect(prompts[id]).toContain('参考素材');
+    }
+    for (const id of ['explosion.seedance', 'pretrailer.seedance', 'native.asset_generator'] as WorkflowPromptId[]) {
+      expect(prompts[id]).toContain(SEEDANCE_PROMPT_CARD_PROMPT);
+      expect(prompts[id]).toContain('referencePolicy');
+    }
+    for (const id of storyboardPromptIds) {
+      expect(prompts[id]).toContain('visualAnchor');
+      expect(prompts[id]).toContain('behaviorState');
+      expect(prompts[id]).toContain('localTone');
+      expect(prompts[id]).toContain('videoTheme');
+    }
   });
 });

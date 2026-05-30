@@ -24,6 +24,7 @@ import type {
   SeedanceVideoRequest,
   TranscriptResult,
   VideoResult,
+  VisionOptions,
 } from './index.js';
 
 const MODEL_LIMIT = pLimit(2);
@@ -945,7 +946,7 @@ export class VolcengineModelClient implements ModelClient {
     );
   }
 
-  async vision(images: string[], prompt: string): Promise<string> {
+  async vision(images: string[], prompt: string, opts?: VisionOptions): Promise<string> {
     if (!Array.isArray(images) || images.length === 0) {
       throw new AppError('E_INPUT_VALIDATION', '视觉理解图片不能为空');
     }
@@ -961,10 +962,14 @@ export class VolcengineModelClient implements ModelClient {
       )),
       { type: 'text', text: normalizedPrompt },
     ];
-    return this.chat([{ role: 'user', content }], { temperature: 0.2 });
+    return this.chat([{ role: 'user', content }], {
+      temperature: opts?.temperature ?? 0.2,
+      ...(opts?.jsonSchema !== undefined ? { jsonSchema: opts.jsonSchema } : {}),
+      ...(opts?.reasoningEffort !== undefined ? { reasoningEffort: opts.reasoningEffort } : {}),
+    });
   }
 
-  async visionVideo(videoPath: string, prompt: string): Promise<string> {
+  async visionVideo(videoPath: string, prompt: string, opts?: VisionOptions): Promise<string> {
     const normalizedVideoPath = requireLocalFile(videoPath, '视觉理解视频');
     const normalizedPrompt = requireNonEmpty(prompt, '视觉理解提示词');
     const content: ChatContentPart[] = [
@@ -974,7 +979,11 @@ export class VolcengineModelClient implements ModelClient {
       },
       { type: 'text', text: normalizedPrompt },
     ];
-    return this.chat([{ role: 'user', content }], { temperature: 0.2 });
+    return this.chat([{ role: 'user', content }], {
+      temperature: opts?.temperature ?? 0.2,
+      ...(opts?.jsonSchema !== undefined ? { jsonSchema: opts.jsonSchema } : {}),
+      ...(opts?.reasoningEffort !== undefined ? { reasoningEffort: opts.reasoningEffort } : {}),
+    });
   }
 
   private async submitAndDownloadVideo(

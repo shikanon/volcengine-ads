@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 
 import { AppError } from '../../errors.js';
@@ -13,6 +14,8 @@ import type { SeedanceVideoRequest, TranscriptResult } from '../../model-client/
 import type { ExplosionInput } from '../../../shared/types.js';
 import {
   artifactPath,
+  buildReferencePolicyText,
+  buildSeedancePromptCard,
   parseModelJson,
   readJson,
   waitForScriptConfirmation,
@@ -28,20 +31,43 @@ interface StoryboardShot {
   visualPrompt: string;
   narration?: string;
   transition?: string;
+  visualAnchor?: string;
+  behaviorState?: string;
+  localTone?: string;
+  videoTheme?: string;
 }
 
 interface ScriptParse {
   cta_keywords: string[];
   scenes: StoryboardShot[];
   selling_points?: string[];
+  hookFormula?: string;
+  hook_formula?: string;
+  conversion_triggers?: string[];
   rhythm?: string;
   original_script?: string;
+  highValueSegments?: Array<{ timeRange: string; reason: string; preserve?: string }>;
+  replaceableSegments?: Array<{ timeRange: string; reason: string }>;
+  similarityRisk?: 'low' | 'medium' | 'high';
+  referencePolicy?: string;
+  riskNotes?: string[];
 }
 
 interface Variant {
   index: number;
+  strategy?:
+    | 'shot_replace'
+    | 'avatar_replace'
+    | 'product_shot_replace'
+    | 'pretrailer_add'
+    | 'hot_opening_reuse'
+    | 'remix';
   copy: string;
   script: string;
+  preserve?: string[];
+  replace?: string[];
+  differenceTarget?: string;
+  variantReason?: string;
   storyboard: StoryboardShot[];
 }
 
@@ -168,17 +194,30 @@ function buildStoryboardPrompt(
   shots: StoryboardShot[],
   segmentIndex: number,
   segmentCount: number,
+  referencePolicy: string,
 ): string {
   const segmentPrefix =
     segmentCount > 1
-      ? `当前仅生成第 ${segmentIndex}/${segmentCount} 段，需与前后段在镜头运动、主体位置、色彩和节奏上连续。如本次输入参考视频，请明确参考该视频的主体位置、动作节奏和运镜连续性。\n`
-      : '';
-  return `${segmentPrefix}${shots
+      ? `当前仅生成第 ${segmentIndex}/${segmentCount} 段，需与前后段在主体位置、动作节奏、色彩和情绪上连续。`
+      : undefined;
+  const storyboardText = shots
     .map(
       (shot) =>
         `镜头 ${shot.index}（${normalizeShotDuration(shot)}s）：${shot.visualPrompt}。旁白/字幕：${shot.narration ?? ''}。转场：${shot.transition ?? ''}`,
     )
-    .join('\n')}`;
+    .join('\n');
+  return buildSeedancePromptCard({
+    outputGoal: '广告爆款裂变，保留高转化结构并生成差异化画面',
+    ratio: '9:16',
+    durationSec: shots.reduce((total, shot) => total + normalizeShotDuration(shot), 0),
+    visualAnchor: shots.map((shot) => shot.visualAnchor ?? shot.visualPrompt).join('；'),
+    behaviorState: shots.map((shot) => shot.behaviorState ?? shot.visualPrompt).join('；'),
+    localTone: shots.map((shot) => shot.localTone ?? shot.transition ?? '节奏紧凑，情绪服务首秒停留和转化').join('；'),
+    videoTheme: shots.map((shot) => shot.videoTheme ?? '爆款结构裂变广告素材').join('；'),
+    referencePolicy,
+    sourceText: storyboardText,
+    segmentNote: segmentPrefix,
+  });
 }
 
 async function runDownload(ctx: StepContext<ExplosionInput>) {
@@ -248,7 +287,7 @@ async function runRewrite(ctx: StepContext<ExplosionInput>) {
       {
         role: 'system',
         content:
-          '你是短视频广告编导。输出 JSON 数组，每项包含 index、copy、script、storyboard。storyboard 是分镜数组，每个分镜包含 index、durationSec、visualPrompt、narration、transition。',
+          '你是短视频广告编导。先在内部分析裂变策略，不输出推理链；只输出合法 JSON 数组，每项包含 index、strategy、copy、script、preserve、replace、differenceTarget、variantReason、storyboard。',
       },
       {
         role: 'user',
@@ -308,6 +347,10 @@ async function runScriptConfirm(ctx: StepContext<ExplosionInput>) {
 
 async function runSeedance(ctx: StepContext<ExplosionInput>) {
   const variants = await readJson<Variant[]>(artifactPath(ctx.artifactDir, 'variants.json'));
+  const scriptParsePath = artifactPath(ctx.artifactDir, 'script_parse.json');
+  const scriptParse = existsSync(scriptParsePath)
+    ? await readJson<ScriptParse>(scriptParsePath)
+    : undefined;
   const referencePath = await trimVideo(
     artifactPath(ctx.artifactDir, 'source.mp4'),
     artifactPath(ctx.artifactDir, 'seedance_reference.mp4'),
@@ -328,12 +371,26 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         : finalOutputPath;
       const durationSec = segment.durationSec;
       const resolution = '1080x1920';
+      const referencePolicy = buildReferencePolicyText({
+        hasReferenceVideo: nextReferencePath !== undefined,
+        purpose: scriptParse?.referencePolicy ?? '爆款裂变生成：保留原片结构、节奏和转化触发点，替换非核心画面。',
+      });
+      const noReferencePolicy = buildReferencePolicyText({
+        purpose: '爆款裂变无参考视频生成：只基于脚本和分镜生成差异化广告画面。',
+        noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和爆款结构生成，不要声称参考了视频。',
+      });
       const request: SeedanceVideoRequest = {
         ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
         prompt: workflowPrompt(ctx, 'explosion.seedance', {
           copy: variant.copy,
           script: variant.script,
-          storyboard: buildStoryboardPrompt(segment.shots, segment.index, segments.length),
+          storyboard: buildStoryboardPrompt(
+            segment.shots,
+            segment.index,
+            segments.length,
+            referencePolicy,
+          ),
+          referencePolicy,
         }),
         durationSec,
         resolution,
@@ -349,7 +406,17 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         }
         usedReferenceVideo = false;
         await ctx.modelClient.generateVideo({
-          prompt: request.prompt,
+          prompt: workflowPrompt(ctx, 'explosion.seedance', {
+            copy: variant.copy,
+            script: variant.script,
+            storyboard: buildStoryboardPrompt(
+              segment.shots,
+              segment.index,
+              segments.length,
+              noReferencePolicy,
+            ),
+            referencePolicy: noReferencePolicy,
+          }),
           durationSec,
           resolution,
           ratio: request.ratio ?? '9:16',

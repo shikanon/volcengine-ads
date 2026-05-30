@@ -10,6 +10,8 @@ import { NATIVE_INDUSTRY_DEFINITIONS } from '../../../shared/workflows.js';
 import { errorTypeLabel } from '../task-log.js';
 import {
   artifactPath,
+  buildReferencePolicyText,
+  buildSeedancePromptCard,
   parseModelJson,
   readJson,
   waitForScriptConfirmation,
@@ -38,11 +40,17 @@ interface ConceptPlan {
     index: number;
     title: string;
     hook: string;
+    firstSecondHook?: string;
     audience: string;
     sellingPoints: string[];
+    proofPoint?: string;
     modules: string[];
     cta: string;
     tone: string;
+    materialFormula?: string;
+    noveltyAngle?: string;
+    commodityAssetFit?: string;
+    riskControl?: string;
   }>;
 }
 
@@ -53,6 +61,8 @@ interface ScriptBundle {
     script: string;
     voiceover?: string;
     cta: string;
+    hookType?: string;
+    riskControl?: string;
     beats: Array<{ timeSec: number; text: string }>;
   }>;
 }
@@ -60,8 +70,14 @@ interface ScriptBundle {
 interface StoryboardShot {
   index: number;
   durationSec: number;
+  shotType?: 'ai_pretrailer' | 'digital_human' | 'product_demo' | 'atmosphere' | 'cta';
   imagePrompt: string;
   videoPrompt: string;
+  visualAnchor?: string;
+  behaviorState?: string;
+  localTone?: string;
+  videoTheme?: string;
+  referencePolicy?: string;
   voiceoverText?: string;
   module?: string;
 }
@@ -120,6 +136,18 @@ interface ConsistencyItem {
   pass: boolean;
   issues: string[];
   score: number;
+  scores?: {
+    hook?: number;
+    clarity?: number;
+    story?: number;
+    visualQuality?: number;
+    referenceConsistency?: number;
+    originality?: number;
+    compliance?: number;
+  };
+  repairPrompt?: string;
+  regeneratePolicy?: string;
+  referenceMismatch?: string[];
 }
 
 interface ConsistencyReport {
@@ -230,26 +258,49 @@ function ensureStoryboard(bundle: StoryboardBundle): StoryboardBundle {
   return bundle;
 }
 
-function storyboardPromptText(variant: StoryboardVariant): string {
-  return variant.shots
+function storyboardSourceText(shots: StoryboardShot[]): string {
+  return shots
     .map(
       (shot) =>
-        `镜头 ${shot.index}（${shot.durationSec}s）：${shot.videoPrompt}。场景图：${shot.imagePrompt}。口播参考（仅用于节奏，不生成画面文字）：${shot.voiceoverText ?? ''}。模块：${shot.module ?? ''}`,
+        `镜头 ${shot.index}（${shot.durationSec}s）：${shot.videoPrompt}。场景图：${shot.imagePrompt}。口播参考（仅用于节奏，不生成画面文字）：${shot.voiceoverText ?? ''}。模块：${shot.module ?? ''}。片段类型：${shot.shotType ?? ''}`,
     )
     .join('\n');
 }
 
-function storyboardSegmentPromptText(segment: StoryboardSegment, segmentCount: number): string {
-  const prefix =
+function storyboardPromptText(variant: StoryboardVariant, referencePolicy: string): string {
+  return buildSeedancePromptCard({
+    outputGoal: '六行业原生爆款广告素材生成',
+    visualAnchor: variant.shots.map((shot) => shot.visualAnchor ?? shot.videoPrompt).join('；'),
+    behaviorState: variant.shots.map((shot) => shot.behaviorState ?? shot.videoPrompt).join('；'),
+    localTone: variant.shots.map((shot) => shot.localTone ?? '信息流广告节奏，首秒清晰').join('；'),
+    videoTheme: variant.shots.map((shot) => shot.videoTheme ?? shot.module ?? '行业广告模块').join('；'),
+    referencePolicy,
+    sourceText: storyboardSourceText(variant.shots),
+    preservedConstraints: ['行业公式', '首秒钩子', '商品或剧情识别度', '合规重点', '不生成画面文字'],
+  });
+}
+
+function storyboardSegmentPromptText(
+  segment: StoryboardSegment,
+  segmentCount: number,
+  referencePolicy: string,
+): string {
+  const segmentNote =
     segmentCount > 1
-      ? `当前只生成第 ${segment.index}/${segmentCount} 段，片段时长 ${segment.durationSec}s。请与前后片段保持主体、机位、光线、色彩和节奏连续。如本次输入参考视频，请明确参考该视频的主体位置、动作节奏和运镜连续性。\n`
-      : '';
-  return `${prefix}${segment.shots
-    .map(
-      (shot) =>
-        `镜头 ${shot.index}（${shot.durationSec}s）：${shot.videoPrompt}。场景图：${shot.imagePrompt}。口播参考（仅用于节奏，不生成画面文字）：${shot.voiceoverText ?? ''}。模块：${shot.module ?? ''}`,
-    )
-    .join('\n')}`;
+      ? `当前只生成第 ${segment.index}/${segmentCount} 段，片段时长 ${segment.durationSec}s。请与前后片段保持主体、动作节奏、光线、色彩和情绪连续。`
+      : undefined;
+  return buildSeedancePromptCard({
+    outputGoal: '六行业原生爆款广告素材分段生成',
+    durationSec: segment.durationSec,
+    visualAnchor: segment.shots.map((shot) => shot.visualAnchor ?? shot.videoPrompt).join('；'),
+    behaviorState: segment.shots.map((shot) => shot.behaviorState ?? shot.videoPrompt).join('；'),
+    localTone: segment.shots.map((shot) => shot.localTone ?? '信息流广告节奏，首秒清晰').join('；'),
+    videoTheme: segment.shots.map((shot) => shot.videoTheme ?? shot.module ?? '行业广告模块').join('；'),
+    referencePolicy,
+    sourceText: storyboardSourceText(segment.shots),
+    preservedConstraints: ['行业公式', '首秒钩子', '商品或剧情识别度', '合规重点', '不生成画面文字'],
+    segmentNote,
+  });
 }
 
 function safeName(value: string): string {
@@ -645,6 +696,14 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                   `asset_variant_${variant.index}_part_${segment.index}.mp4`,
                 )
               : generatedVideoPath;
+          const referencePolicy = buildReferencePolicyText({
+            hasReferenceVideo: nextReferencePath !== undefined,
+            purpose: `${route.title}行业原生素材「${variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
+          });
+          const noReferencePolicy = buildReferencePolicyText({
+            purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
+            noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
+          });
           const videoRequest = {
             prompt: workflowPrompt(ctx, 'native.asset_generator', {
               industryTitle: route.title,
@@ -652,9 +711,10 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
               script: variant.script,
               storyboard:
                 segments.length > 1
-                  ? storyboardSegmentPromptText(segment, segments.length)
-                  : storyboardPromptText(variant),
+                  ? storyboardSegmentPromptText(segment, segments.length, referencePolicy)
+                  : storyboardPromptText(variant, referencePolicy),
               ratio: ctx.input.ratio,
+              referencePolicy,
             }),
             durationSec: segment.durationSec,
             resolution: ctx.input.ratio === '16:9' ? '1080p' : '720p',
@@ -717,7 +777,17 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             });
             try {
               await ctx.modelClient.generateVideo({
-                prompt: videoRequest.prompt,
+                prompt: workflowPrompt(ctx, 'native.asset_generator', {
+                  industryTitle: route.title,
+                  title: variant.title,
+                  script: variant.script,
+                  storyboard:
+                    segments.length > 1
+                      ? storyboardSegmentPromptText(segment, segments.length, noReferencePolicy)
+                      : storyboardPromptText(variant, noReferencePolicy),
+                  ratio: ctx.input.ratio,
+                  referencePolicy: noReferencePolicy,
+                }),
                 durationSec: videoRequest.durationSec,
                 resolution: videoRequest.resolution,
                 ratio: videoRequest.ratio,
@@ -1035,6 +1105,12 @@ async function runConsistencyChecker(ctx: StepContext<NativeInput>) {
       pass: check.pass,
       issues: Array.isArray(check.issues) ? check.issues : [],
       score: typeof check.score === 'number' ? check.score : 0,
+      ...(check.scores !== undefined ? { scores: check.scores } : {}),
+      ...(check.repairPrompt !== undefined ? { repairPrompt: check.repairPrompt } : {}),
+      ...(check.regeneratePolicy !== undefined ? { regeneratePolicy: check.regeneratePolicy } : {}),
+      ...(Array.isArray(check.referenceMismatch)
+        ? { referenceMismatch: check.referenceMismatch }
+        : {}),
     });
   }
 

@@ -18,6 +18,7 @@ import { useSettingsStore } from '../stores/settings-store.js';
 import {
   WORKFLOW_DEFINITIONS,
   WORKFLOW_PROMPT_DEFINITIONS,
+  WORKFLOW_PROMPT_TEMPLATE_VERSION,
   getDefaultWorkflowPrompts,
 } from '../../shared/workflows.js';
 import type { TaskType } from '../../shared/types.js';
@@ -343,6 +344,7 @@ export function Workflows() {
             <div className="workflow-canvas-stats" aria-label="工作流概览">
               <span>{workflow.nodes.length} 节点</span>
               <span>{getPromptCount(workflow.nodes)} Prompt</span>
+              <span>{WORKFLOW_PROMPT_TEMPLATE_VERSION}</span>
             </div>
           </div>
 
@@ -400,6 +402,10 @@ export function Workflows() {
               <dt>Prompt</dt>
               <dd>{selectedNode.promptIds.length > 0 ? `${selectedNode.promptIds.length} 个可编辑` : '固定处理'}</dd>
             </div>
+            <div>
+              <dt>模板</dt>
+              <dd>{WORKFLOW_PROMPT_TEMPLATE_VERSION}</dd>
+            </div>
           </dl>
 
           <div className="workflow-node-strip" aria-label="节点快捷选择">
@@ -441,6 +447,12 @@ export function Workflows() {
                   <span>{promptDefinition.description}</span>
                 </div>
                 <Tag className="prompt-tag editable">Prompt 可调</Tag>
+                <div className="prompt-context-tags" aria-label="Prompt 工程能力">
+                  <Tag className="prompt-tag">内部分析</Tag>
+                  <Tag className="prompt-tag">Seedance Router</Tag>
+                  <Tag className="prompt-tag">参考策略</Tag>
+                  <Tag className="prompt-tag">质量 Rubric</Tag>
+                </div>
                 {promptDefinition.variables.length > 0 ? (
                   <div className="prompt-vars">
                     {promptDefinition.variables.map((variable) => (
