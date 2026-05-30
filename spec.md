@@ -1,4 +1,4 @@
-# 五行业爆款广告素材生成
+# 六行业爆款广告素材生成
 
 
 
@@ -15,16 +15,26 @@
 | N7 | ConsistencyChecker | UtilityProcess (vlm-worker) | Doubao VLM + sharp 抽帧 |
 | N8 | Composer + Post-Compliance | UtilityProcess (ffmpeg-worker) | fluent-ffmpeg + ffmpeg-static |
 
-当前 Electron 版本将五行业原生生成收敛为 `native` 任务类型，pipeline step 名称使用 snake_case：
+当前 Electron 版本将六行业原生生成收敛为 `native` 任务类型，pipeline step 名称使用 snake_case：
 
 1. `industry_router`：写入 `industry.json`
 2. `concept_planner`：写入 `concepts.json`
 3. `script_writer`：写入 `scripts.json`
-4. `storyboard_builder`：写入 `storyboard.json`
-5. `compliance_pre`：写入 `compliance_pre.json`
-6. `asset_generator`：写入 `assets.json`。单次 Seedance 生成片段必须控制在 4..15s；当 `durationSec` 超过 15s 时，按多个片段生成（如 25s = 15s + 10s），记录每段成功/失败状态，最终用 FFmpeg 拼接为单条成片。
-7. `consistency_checker`：写入 `consistency.json`
-8. `composer`：写入 `finals.json` 并入库成片
+4. `script_confirm`：展示 `scripts.md` 并进入 `waiting_confirmation`，由用户确认脚本文案后继续
+5. `storyboard_builder`：写入 `storyboard.json`
+6. `compliance_pre`：写入 `compliance_pre.json`
+7. `asset_generator`：写入 `assets.json`。单次 Seedance 生成片段必须控制在 4..15s；当 `durationSec` 超过 15s 时，按多个片段生成（如 25s = 15s + 10s），记录每段成功/失败状态，最终用 FFmpeg 拼接为单条成片。
+8. `consistency_checker`：写入 `consistency.json`
+9. `composer`：写入 `finals.json` 并入库成片
+
+广告爆款裂变、原生爆款素材生成、广告前贴生成、广告数字人口播都必须在脚本文案生成后、视频/音频生成前进入 `script_confirm` 确认环节。确认节点不调用模型，仅复用上游脚本文案产物供用户预览；任务状态为 `waiting_confirmation` 时，用户确认后通过 `task:confirm-script` 将该节点标记为 `success` 并恢复排队继续执行。
+
+## 3.1 视频理解输入策略
+
+- 所有名为“视频理解”或承担原片视觉理解职责的节点，必须把完整视频文件直接输入大语言模型的视频理解接口（`ModelClient.visionVideo(videoPath, prompt)`）。
+- 禁止在视频理解阶段把视频抽帧成图片后调用图片理解接口；不再生成或依赖 `keyframes/`、`understand_frames/` 等关键帧目录。
+- 允许为 ASR、音频替换、FFmpeg 合成等非理解场景单独提取音频；允许为视频生成参考单独裁剪参考视频，但这些产物不得替代视频理解输入。
+- 产品设计上，“视频理解”节点展示为完整视频理解：输入为规范化后的 `source.mp4`，输出为结构化 JSON（如 `understanding.json` 或 `script_parse.json`），用于后续文案、分镜和一致性判断。
 
 
 ## 5. 行业差异化策略矩阵
@@ -36,11 +46,12 @@
 | 小说 | 15s AI 钩子前贴 + 解压/滚屏拼接 | 15-60s | 人物参考图固化 / 六段式信息流脚本 | AIGC 命名规范 |
 | 社交 | 起承转合四段式 | 15-30s | 不露脸自拍 / 聊天记录截图 | 不良暗示词库 + 不实宣传词库 |
 | 工具 | 痛点 + 真人口播 + UI 演示 + CTA | 15-30s | 数字人口播 / UI 占位 / 创意空镜 | 真实承诺、无虚假宣传 |
+| 电商 | 场景痛点 + 商品卖点 + 证据背书 + 权益刺激 + CTA | 15-30s | 商品特写 / 使用场景 / 卖点对比 / 促销权益 | 价格真实性、促销规则、功效承诺、品牌授权 |
 
 ## 5.1 `native` 输入契约
 
 ```typescript
-type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool';
+type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool' | 'ecommerce';
 type NativeRatio = '9:16' | '16:9' | '1:1';
 
 interface NativeInput {
@@ -49,7 +60,7 @@ interface NativeInput {
   productName?: string;
   referenceVideoPath?: string;
   variantCount: number; // 1..5
-  durationSec: number;  // game/social/tool: 15..30, novel: 15..60, short_drama: 15..300
+  durationSec: number;  // game/social/tool/ecommerce: 15..30, novel: 15..60, short_drama: 15..300
   ratio: NativeRatio;
 }
 ```
@@ -67,6 +78,7 @@ export const IPC = {
   TASK_DELETE: 'task:delete',
   TASK_CLONE: 'task:clone',
   TASK_RETRY_NODE: 'task:retryNode',
+  TASK_CONFIRM_SCRIPT: 'task:confirm-script',
   TASK_PROGRESS: 'task:progress',          // Main → Renderer push
   KB_GET: 'kb:get',
   KB_UPDATE: 'kb:update',
@@ -88,6 +100,7 @@ contextBridge.exposeInMainWorld('api', {
     delete: (id) => ipcRenderer.invoke(IPC.TASK_DELETE, id),
     clone: (id) => ipcRenderer.invoke(IPC.TASK_CLONE, id),
     retryNode: (id, node) => ipcRenderer.invoke(IPC.TASK_RETRY_NODE, id, node),
+    confirmScript: (id) => ipcRenderer.invoke(IPC.TASK_CONFIRM_SCRIPT, { taskId: id }),
     onProgress: (cb) => {
       const listener = (_e, data) => cb(data);
       ipcRenderer.on(IPC.TASK_PROGRESS, listener);
@@ -114,6 +127,7 @@ declare global {
 - `task:cancel`：排队任务直接进入 `canceled`；运行中任务标记当前 running 节点为 `canceled`，当前云端调用返回后不再执行后续节点。
 - `task:delete`：删除任务记录与节点记录，已入库素材保留；运行中的任务必须先取消并等待执行器释放。
 - `task:clone`：复制原任务 `type + input`，创建新的 `queued` 任务与全新节点，并立即进入队列。
+- `task:confirm-script`：仅允许 `waiting_confirmation` 任务调用；将当前 `script_confirm` 节点标记为 `success`，任务恢复为 `queued` 并继续后续节点。
 
 ## 5. DAG Runner 实现规范
 

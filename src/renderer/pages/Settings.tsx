@@ -3,7 +3,11 @@ import { SaveOutlined } from '@ant-design/icons';
 import { useEffect } from 'react';
 
 import { useSettingsStore } from '../stores/settings-store.js';
-import type { SettingsUpdate } from '../../shared/types.js';
+import {
+  PRETRAILER_VIDEO_TYPE_DEFINITIONS,
+  SUPPORTED_TTS_SPEAKERS,
+  type SettingsUpdate,
+} from '../../shared/types.js';
 
 export function Settings() {
   const [form] = Form.useForm<SettingsUpdate>();
@@ -24,6 +28,7 @@ export function Settings() {
       if (settings.seedanceApiKey) values.seedanceApiKey = settings.seedanceApiKey;
       if (settings.imageApiKey) values.imageApiKey = settings.imageApiKey;
       if (settings.llmApiKey) values.llmApiKey = settings.llmApiKey;
+      if (settings.ttsApiKey) values.ttsApiKey = settings.ttsApiKey;
       if (settings.ttsAppId) values.ttsAppId = settings.ttsAppId;
       if (settings.ttsToken) values.ttsToken = settings.ttsToken;
       if (settings.asrApiKey) values.asrApiKey = settings.asrApiKey;
@@ -97,16 +102,21 @@ export function Settings() {
             <section className="settings-section">
               <Typography.Title level={5}>语音服务</Typography.Title>
               <Form.Item
-                name="ttsAppId"
-                label={`TTS AppId${settings?.ttsConfigured ? '（已配置）' : ''}`}
+                name="ttsApiKey"
+                label={`TTS API Key${settings?.ttsConfigured ? '（已配置）' : ''}`}
               >
-                <Input autoComplete="off" />
-              </Form.Item>
-              <Form.Item name="ttsToken" label="TTS Token">
                 <Input autoComplete="off" />
               </Form.Item>
               <Form.Item name={['provider', 'ttsBaseUrl']} label="TTS Base URL">
                 <Input />
+              </Form.Item>
+              <Form.Item name={['provider', 'ttsVoice']} label="TTS 默认音色">
+                <Select
+                  options={SUPPORTED_TTS_SPEAKERS.map((speaker) => ({
+                    value: speaker,
+                    label: speaker,
+                  }))}
+                />
               </Form.Item>
               <Form.Item
                 name="asrApiKey"
@@ -152,15 +162,12 @@ export function Settings() {
               <Form.Item name="concurrency" label="并发任务数">
                 <InputNumber min={1} max={2} className="number-input" />
               </Form.Item>
-              <Form.Item name="defaultPretrailerStyle" label="默认前贴风格">
+              <Form.Item name="defaultPretrailerStyle" label="默认广告前贴视频生成类型">
                 <Select
-                  options={[
-                    { value: 'auto', label: '自动推荐' },
-                    { value: 'suspense', label: '悬念' },
-                    { value: 'contrast', label: '反差' },
-                    { value: 'pain', label: '痛点' },
-                    { value: 'benefit', label: '福利' },
-                  ]}
+                  options={PRETRAILER_VIDEO_TYPE_DEFINITIONS.map((definition) => ({
+                    value: definition.value,
+                    label: definition.label,
+                  }))}
                 />
               </Form.Item>
               <Form.Item

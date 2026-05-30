@@ -119,6 +119,39 @@ describe('VolcengineModelClient.generateVideo', () => {
     expect(JSON.parse(init?.body ?? '{}')).toMatchObject({ generate_audio: true });
   });
 
+  it('passes through Seedance ratio when provided by the pipeline', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
+    const outputPath = join(dir, 'video.mp4');
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'task-id' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ status: 'succeeded', video_url: 'https://ark.invalid/video.mp4' }),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => Buffer.from('video').buffer,
+      } as never);
+
+    await new VolcengineModelClient(credentials()).generateVideo({
+      prompt: '生成 16:9 横版游戏广告素材',
+      ratio: '16:9',
+      outputPath,
+    });
+
+    const createCall = vi.mocked(fetch).mock.calls[0];
+    const init = createCall?.[1] as { body?: string } | undefined;
+    expect(JSON.parse(init?.body ?? '{}')).toMatchObject({ ratio: '16:9' });
+  });
+
   it('normalizes legacy pixel resolution before requesting Seedance', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
     const imagePath = join(dir, 'frame.png');
@@ -165,6 +198,19 @@ describe('VolcengineModelClient.generateVideo', () => {
         refImagePaths: [imagePath],
         prompt: '生成前贴',
         resolution: '540p',
+        outputPath: join(dir, 'video.mp4'),
+      }),
+    ).rejects.toThrow(AppError);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported Seedance ratio before the network request', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-video-'));
+
+    await expect(
+      new VolcengineModelClient(credentials()).generateVideo({
+        prompt: '生成前贴',
+        ratio: '2:1',
         outputPath: join(dir, 'video.mp4'),
       }),
     ).rejects.toThrow(AppError);

@@ -15,6 +15,7 @@ import {
   artifactPath,
   parseModelJson,
   readJson,
+  waitForScriptConfirmation,
   workflowPrompt,
   writeJson,
   writeText,
@@ -170,7 +171,7 @@ function buildStoryboardPrompt(
 ): string {
   const segmentPrefix =
     segmentCount > 1
-      ? `当前仅生成第 ${segmentIndex}/${segmentCount} 段，需与前后段在镜头运动、主体位置、色彩和节奏上连续。\n`
+      ? `当前仅生成第 ${segmentIndex}/${segmentCount} 段，需与前后段在镜头运动、主体位置、色彩和节奏上连续。如本次输入参考视频，请明确参考该视频的主体位置、动作节奏和运镜连续性。\n`
       : '';
   return `${segmentPrefix}${shots
     .map(
@@ -301,6 +302,10 @@ async function runRewrite(ctx: StepContext<ExplosionInput>) {
   };
 }
 
+async function runScriptConfirm(ctx: StepContext<ExplosionInput>) {
+  return waitForScriptConfirmation(ctx, 'variants.md', '爆款裂变脚本文案');
+}
+
 async function runSeedance(ctx: StepContext<ExplosionInput>) {
   const variants = await readJson<Variant[]>(artifactPath(ctx.artifactDir, 'variants.json'));
   const referencePath = await trimVideo(
@@ -332,6 +337,7 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         }),
         durationSec,
         resolution,
+        ratio: '9:16',
         outputPath,
       };
       let usedReferenceVideo = nextReferencePath !== undefined;
@@ -346,6 +352,7 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
           prompt: request.prompt,
           durationSec,
           resolution,
+          ratio: request.ratio ?? '9:16',
           outputPath,
         });
       }
@@ -418,6 +425,7 @@ export const explosionPipeline: PipelineDefinition<ExplosionInput> = {
     { name: 'asr', runStep: runAsr },
     { name: 'script_parse', runStep: runScriptParse },
     { name: 'rewrite', runStep: runRewrite },
+    { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'seedance', runStep: runSeedance },
     { name: 'audio_replace', runStep: runAudioReplace },
   ],

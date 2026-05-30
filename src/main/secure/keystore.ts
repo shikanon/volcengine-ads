@@ -2,7 +2,14 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 
 import { AppError } from '../errors.js';
 import type { TaskRepository } from '../db/index.js';
-import type { ProviderPublicSettings, SettingsState, SettingsUpdate } from '../../shared/types.js';
+import {
+  DEFAULT_PRETRAILER_VIDEO_TYPE,
+  SUPPORTED_TTS_SPEAKERS,
+  normalizePretrailerStyle,
+  type ProviderPublicSettings,
+  type SettingsState,
+  type SettingsUpdate,
+} from '../../shared/types.js';
 import { normalizeWorkflowPrompts } from '../../shared/workflows.js';
 import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
 
@@ -12,6 +19,7 @@ const ENCRYPTED_KEYS = new Set([
   'seedanceApiKey',
   'imageApiKey',
   'llmApiKey',
+  'ttsApiKey',
   'ttsAppId',
   'ttsToken',
   'asrApiKey',
@@ -36,6 +44,15 @@ const DEFAULT_PROVIDER: ProviderPublicSettings = {
   ossBucketName: '',
 };
 
+function normalizeTtsSpeaker(voice?: string): string {
+  if (voice === undefined || voice === 'volcano_tts') {
+    return DEFAULT_PROVIDER.ttsVoice;
+  }
+  return SUPPORTED_TTS_SPEAKERS.includes(voice as (typeof SUPPORTED_TTS_SPEAKERS)[number])
+    ? voice
+    : DEFAULT_PROVIDER.ttsVoice;
+}
+
 function normalizeProviderSettings(
   provider: Partial<ProviderPublicSettings>,
 ): ProviderPublicSettings {
@@ -55,10 +72,7 @@ function normalizeProviderSettings(
         ? DEFAULT_PROVIDER.llmModel
         : provider.llmModel,
     ttsBaseUrl: provider.ttsBaseUrl ?? DEFAULT_PROVIDER.ttsBaseUrl,
-    ttsVoice:
-      provider.ttsVoice === undefined || provider.ttsVoice === 'volcano_tts'
-        ? DEFAULT_PROVIDER.ttsVoice
-        : provider.ttsVoice,
+    ttsVoice: normalizeTtsSpeaker(provider.ttsVoice),
     asrBaseUrl: provider.asrBaseUrl ?? DEFAULT_PROVIDER.asrBaseUrl,
     asrResourceId: provider.asrResourceId ?? DEFAULT_PROVIDER.asrResourceId,
     ossEndpoint: provider.ossEndpoint ?? DEFAULT_PROVIDER.ossEndpoint,
@@ -74,6 +88,7 @@ export interface RuntimeCredentials {
   seedanceApiKey?: string;
   imageApiKey?: string;
   llmApiKey?: string;
+  ttsApiKey?: string;
   ttsAppId?: string;
   ttsToken?: string;
   asrApiKey?: string;
@@ -167,6 +182,7 @@ export class SettingsService {
     const seedanceApiKey = await this.readEncrypted('seedanceApiKey');
     const imageApiKey = await this.readEncrypted('imageApiKey');
     const llmApiKey = await this.readEncrypted('llmApiKey');
+    const ttsApiKey = await this.readEncrypted('ttsApiKey');
     const ttsAppId = await this.readEncrypted('ttsAppId');
     const ttsToken = await this.readEncrypted('ttsToken');
     const asrApiKey = await this.readEncrypted('asrApiKey');
@@ -178,10 +194,12 @@ export class SettingsService {
       seedanceConfigured: Boolean(seedanceApiKey),
       imageConfigured: Boolean(imageApiKey),
       llmConfigured: Boolean(llmApiKey),
-      ttsConfigured: Boolean(ttsAppId && ttsToken),
+      ttsConfigured: Boolean(ttsApiKey || (ttsAppId && ttsToken)),
       asrConfigured: Boolean(asrApiKey || (asrAppId && asrToken)),
       concurrency: getJson<number>(this.repository, 'concurrency', 1),
-      defaultPretrailerStyle: getJson(this.repository, 'defaultPretrailerStyle', 'auto'),
+      defaultPretrailerStyle: normalizePretrailerStyle(
+        getJson(this.repository, 'defaultPretrailerStyle', DEFAULT_PRETRAILER_VIDEO_TYPE),
+      ),
       complianceAccepted: getJson(this.repository, 'complianceAccepted', false),
       provider,
       workflowPrompts: normalizeWorkflowPrompts(
@@ -191,6 +209,7 @@ export class SettingsService {
     if (seedanceApiKey) settings.seedanceApiKey = seedanceApiKey;
     if (imageApiKey) settings.imageApiKey = imageApiKey;
     if (llmApiKey) settings.llmApiKey = llmApiKey;
+    if (ttsApiKey) settings.ttsApiKey = ttsApiKey;
     if (ttsAppId) settings.ttsAppId = ttsAppId;
     if (ttsToken) settings.ttsToken = ttsToken;
     if (asrApiKey) settings.asrApiKey = asrApiKey;
@@ -244,6 +263,7 @@ export class SettingsService {
     const seedanceApiKey = await this.readEncrypted('seedanceApiKey');
     const imageApiKey = await this.readEncrypted('imageApiKey');
     const llmApiKey = await this.readEncrypted('llmApiKey');
+    const ttsApiKey = await this.readEncrypted('ttsApiKey');
     const ttsAppId = await this.readEncrypted('ttsAppId');
     const ttsToken = await this.readEncrypted('ttsToken');
     const asrApiKey = await this.readEncrypted('asrApiKey');
@@ -254,6 +274,7 @@ export class SettingsService {
     if (seedanceApiKey) credentials.seedanceApiKey = seedanceApiKey;
     if (imageApiKey) credentials.imageApiKey = imageApiKey;
     if (llmApiKey) credentials.llmApiKey = llmApiKey;
+    if (ttsApiKey) credentials.ttsApiKey = ttsApiKey;
     if (ttsAppId) credentials.ttsAppId = ttsAppId;
     if (ttsToken) credentials.ttsToken = ttsToken;
     if (asrApiKey) credentials.asrApiKey = asrApiKey;

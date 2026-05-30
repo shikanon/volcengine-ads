@@ -9,6 +9,7 @@ import type { ModelClient } from '../model-client/index.js';
 import type { TaskRepository } from '../db/index.js';
 import type { TaskProgressEvent, TaskRecord } from '../../shared/types.js';
 import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
+import { runCodexDiagnosisOnce } from './codex-diagnosis.js';
 import type { PipelineDefinition, StepContext } from './types.js';
 import {
   appendPipelineLog,
@@ -111,6 +112,33 @@ export async function runPipeline(params: {
         emitCanceled(repository, task.id, emitProgress);
         return;
       }
+      if (result.awaitingConfirmation) {
+        repository.updateStepWaitingConfirmation(task.id, step.name, result.artifactPath, result.logs);
+        repository.updateTaskStatus(
+          task.id,
+          'waiting_confirmation',
+          progress,
+          result.awaitingConfirmation.message,
+        );
+        await appendPipelineLog(logFilePath, {
+          taskId: task.id,
+          step: step.name,
+          level: 'info',
+          message: '节点等待人工确认',
+          data: {
+            progress,
+            ...(result.artifactPath !== undefined ? { artifactPath: result.artifactPath } : {}),
+          },
+        });
+        emitProgress({
+          taskId: task.id,
+          status: 'waiting_confirmation',
+          progress,
+          step: step.name,
+          message: result.awaitingConfirmation.message,
+        });
+        return;
+      }
       repository.updateStepSuccess(task.id, step.name, result.artifactPath, result.logs);
       const nextProgress = Math.floor(((index + 1) / total) * 100);
       repository.updateTaskProgress(task.id, nextProgress);
@@ -137,7 +165,28 @@ export async function runPipeline(params: {
         ...errorToLogFields(appError),
         data: { progress },
       });
-      const userError = formatErrorForUser(appError, logFilePath);
+      const diagnosisPath = await runCodexDiagnosisOnce({
+        task,
+        stepName: step.name,
+        artifactDir,
+        logFilePath,
+        error: appError,
+      });
+      if (diagnosisPath !== undefined) {
+        await appendPipelineLog(logFilePath, {
+          taskId: task.id,
+          step: step.name,
+          level: 'info',
+          message: 'Codex CLI 自动诊断完成',
+          data: { diagnosisPath },
+        });
+      }
+      const userError = [
+        formatErrorForUser(appError, logFilePath),
+        diagnosisPath !== undefined ? `Codex诊断文件：${diagnosisPath}` : undefined,
+      ]
+        .filter((line): line is string => line !== undefined)
+        .join('\n');
       repository.updateStepFailed(task.id, step.name, userError);
       repository.updateTaskStatus(task.id, 'paused', progress, userError);
       emitProgress({

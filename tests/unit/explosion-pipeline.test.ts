@@ -148,6 +148,7 @@ describe('explosionPipeline', () => {
     expect(modelClient.videoRequests).toHaveLength(2);
     expect(firstRequest).toMatchObject({
       durationSec: 10,
+      ratio: '9:16',
       outputPath: join(artifactDir, 'variant_1_part_1.mp4'),
       refVideoPath: join(artifactDir, 'seedance_reference.mp4'),
     });
@@ -157,6 +158,7 @@ describe('explosionPipeline', () => {
       refVideoPath: firstRequest?.outputPath,
     });
     expect(secondRequest?.prompt).toContain('当前仅生成第 2/2 段');
+    expect(secondRequest?.prompt).toContain('参考该视频的主体位置');
     expect(concatVideos).toHaveBeenCalledWith(
       [join(artifactDir, 'variant_1_part_1.mp4'), join(artifactDir, 'variant_1_part_2.mp4')],
       join(artifactDir, 'variant_1.mp4'),

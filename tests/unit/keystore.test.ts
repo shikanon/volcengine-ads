@@ -17,8 +17,10 @@ function createMemoryRepository(): TaskRepository {
     updateTaskStatus: () => undefined,
     updateTaskProgress: () => undefined,
     updateStepRunning: () => undefined,
+    updateStepWaitingConfirmation: () => undefined,
     updateStepSuccess: () => undefined,
     updateStepFailed: () => undefined,
+    confirmWaitingStep: () => undefined,
     resetStepAndFollowing: () => undefined,
     listAssets: () => [],
     createAsset: () => {
@@ -35,15 +37,19 @@ describe('SettingsService', () => {
     const repository = createMemoryRepository();
     const service = new SettingsService(repository, new StaticSecretProvider('unit-test-secret'));
 
-    await service.updateSettings({ seedanceApiKey: 'secret-key' });
+    await service.updateSettings({ seedanceApiKey: 'secret-key', ttsApiKey: 'tts-secret-key' });
 
     expect(repository.getSetting('seedanceApiKey')).not.toContain('secret-key');
+    expect(repository.getSetting('ttsApiKey')).not.toContain('tts-secret-key');
     await expect(service.getRuntimeCredentials()).resolves.toMatchObject({
       seedanceApiKey: 'secret-key',
+      ttsApiKey: 'tts-secret-key',
     });
     await expect(service.getPublicSettings()).resolves.toMatchObject({
       seedanceConfigured: true,
       seedanceApiKey: 'secret-key',
+      ttsConfigured: true,
+      ttsApiKey: 'tts-secret-key',
     });
   });
 

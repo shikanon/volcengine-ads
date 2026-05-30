@@ -4,7 +4,7 @@ import log from 'electron-log/main.js';
 import type { TaskRepository } from '../db/index.js';
 import type { TaskWorker } from '../queue/worker.js';
 import { IPC_CHANNELS } from '../../shared/ipc-channels.js';
-import type { CreateTaskRequest, RetryStepRequest } from '../../shared/types.js';
+import type { ConfirmScriptRequest, CreateTaskRequest, RetryStepRequest } from '../../shared/types.js';
 
 export function registerTaskIpc(repository: TaskRepository, worker: TaskWorker): void {
   ipcMain.handle(IPC_CHANNELS.task.create, (_event, request: CreateTaskRequest) => {
@@ -26,6 +26,15 @@ export function registerTaskIpc(repository: TaskRepository, worker: TaskWorker):
   ipcMain.handle(IPC_CHANNELS.task.retryStep, (_event, request: RetryStepRequest) => {
     worker.retryStep(request);
     return repository.getTask(request.taskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.task.confirmScript, (_event, request: ConfirmScriptRequest) => {
+    try {
+      return worker.confirmScript(request.taskId);
+    } catch (error) {
+      log.error('task:confirm-script failed', error);
+      throw error;
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.task.cancel, (_event, taskId: string) => {

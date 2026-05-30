@@ -124,6 +124,14 @@ class MemoryTaskRepository implements TaskRepository {
     this.updateStep(taskId, step, { status: 'running', startedAt: Date.now() });
   }
 
+  updateStepWaitingConfirmation(taskId: string, step: string, artifactPath?: string, logs?: string): void {
+    this.updateStep(taskId, step, {
+      status: 'waiting_confirmation',
+      ...(artifactPath !== undefined ? { artifactPath } : {}),
+      ...(logs !== undefined ? { logs } : {}),
+    });
+  }
+
   updateStepSuccess(taskId: string, step: string, artifactPath?: string, logs?: string): void {
     this.updateStep(taskId, step, {
       status: 'success',
@@ -135,6 +143,28 @@ class MemoryTaskRepository implements TaskRepository {
 
   updateStepFailed(taskId: string, step: string, error: string): void {
     this.updateStep(taskId, step, { status: 'failed', logs: error, finishedAt: Date.now() });
+  }
+
+  confirmWaitingStep(taskId: string): TaskRecord | undefined {
+    const task = this.getTask(taskId);
+    if (!task || task.status !== 'waiting_confirmation') {
+      return undefined;
+    }
+    const waiting = task.steps.find((step) => step.status === 'waiting_confirmation');
+    if (!waiting) {
+      return undefined;
+    }
+    this.updateStep(taskId, waiting.step, {
+      status: 'success',
+      logs: '脚本文案已确认',
+      finishedAt: Date.now(),
+    });
+    if (this.task) {
+      const next: TaskRecord = { ...this.task, status: 'queued', updatedAt: Date.now() };
+      delete next.error;
+      this.task = next;
+    }
+    return this.getTask(taskId);
   }
 
   resetStepAndFollowing(): void {
@@ -313,7 +343,7 @@ describe('nativePipeline', () => {
       stepNames: nativePipeline.steps.map((step) => step.name),
     });
 
-    await runPipeline({
+    const runParams = {
       task,
       pipeline: nativePipeline,
       repository,
@@ -321,7 +351,18 @@ describe('nativePipeline', () => {
       workflowPrompts: {},
       userDataPath,
       emitProgress: () => undefined,
+    };
+
+    await runPipeline(runParams);
+
+    const waiting = repository.getTask(task.id);
+    expect(waiting?.status).toBe('waiting_confirmation');
+    expect(waiting?.steps.find((step) => step.step === 'script_confirm')).toMatchObject({
+      status: 'waiting_confirmation',
     });
+
+    repository.confirmWaitingStep(task.id);
+    await runPipeline(runParams);
 
     const completed = repository.getTask(task.id);
     expect(completed?.status).toBe('success');
@@ -453,6 +494,11 @@ describe('nativePipeline', () => {
       true,
       true,
     ]);
+    expect(modelClient.videoRequests.map((request) => request.ratio)).toEqual([
+      '9:16',
+      '9:16',
+      '9:16',
+    ]);
     expect(modelClient.videoRequests[0]?.prompt).toContain(VIDEO_TEXT_STICKER_PROMPT);
     expect(modelClient.videoRequests[0]?.prompt).toContain('口播参考（仅用于节奏，不生成画面文字）');
     expect(modelClient.videoRequests[0]?.prompt).not.toContain('口播/字幕');
@@ -543,6 +589,8 @@ describe('nativePipeline', () => {
       false,
       false,
     ]);
+    expect(modelClient.videoRequests.map((request) => request.ratio)).toEqual(['9:16', '9:16']);
+    expect(modelClient.videoRequests[1]?.prompt).toContain('参考该视频的主体位置');
     expect(modelClient.videoRequests.map((request) => request.outputPath)).toEqual([
       join(artifactDir, 'asset_variant_1_part_1.mp4'),
       join(artifactDir, 'asset_variant_1_part_2.mp4'),

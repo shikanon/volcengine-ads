@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { AppError } from '../errors.js';
 import { renderWorkflowPrompt } from '../../shared/workflows.js';
 import type { WorkflowPromptId } from '../../shared/workflows.js';
-import type { StepContext } from './types.js';
+import type { StepContext, StepResult } from './types.js';
 
 export async function writeJson(path: string, value: unknown): Promise<string> {
   await mkdir(dirname(path), { recursive: true });
@@ -24,6 +24,19 @@ export async function readJson<T>(path: string): Promise<T> {
 
 export function artifactPath(artifactDir: string, name: string): string {
   return join(artifactDir, name);
+}
+
+export function waitForScriptConfirmation(
+  ctx: StepContext,
+  artifactName: string,
+  label: string,
+): StepResult {
+  const message = `${label}已生成，请确认脚本文案后继续后续生成。`;
+  return {
+    artifactPath: artifactPath(ctx.artifactDir, artifactName),
+    logs: message,
+    awaitingConfirmation: { message },
+  };
 }
 
 export function workflowPrompt(

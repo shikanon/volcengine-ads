@@ -3,39 +3,46 @@
 }
 
 :root {
-  --surface-canvas: oklch(0.965 0.006 170);
-  --surface-sidebar: oklch(0.988 0.004 170);
-  --surface-panel: oklch(0.998 0.002 170);
-  --surface-raised: oklch(0.99 0.004 170);
-  --surface-hover: oklch(0.94 0.01 170);
-  --line-soft: oklch(0.875 0.012 170);
-  --line-strong: oklch(0.79 0.016 170);
-  --text-strong: oklch(0.23 0.014 170);
-  --text-main: oklch(0.32 0.012 170);
-  --text-muted: oklch(0.52 0.012 170);
-  --accent: oklch(0.48 0.08 168);
-  --accent-deep: oklch(0.32 0.06 168);
-  --accent-soft: oklch(0.92 0.04 168);
-  --state-info: oklch(0.52 0.085 238);
-  --state-info-soft: oklch(0.93 0.035 238);
-  --state-success: oklch(0.47 0.075 150);
-  --state-success-soft: oklch(0.92 0.04 150);
-  --state-warning: oklch(0.56 0.105 84);
-  --state-warning-soft: oklch(0.94 0.045 84);
-  --state-danger: oklch(0.54 0.13 28);
-  --state-danger-soft: oklch(0.94 0.04 28);
-  --workflow-edge: oklch(0.62 0.032 185);
-  --workflow-grid-dot: oklch(0.78 0.014 180);
-  --workflow-stage-input: oklch(0.47 0.018 210);
-  --workflow-stage-input-soft: oklch(0.93 0.012 210);
-  --workflow-stage-logic: oklch(0.48 0.08 168);
-  --workflow-stage-logic-soft: oklch(0.92 0.04 168);
-  --workflow-stage-media: oklch(0.56 0.105 84);
-  --workflow-stage-media-soft: oklch(0.94 0.045 84);
-  --workflow-stage-output: oklch(0.47 0.075 150);
-  --workflow-stage-output-soft: oklch(0.92 0.04 150);
-  --shadow-panel: 0 12px 28px color-mix(in oklch, var(--text-strong) 5%, transparent);
-  --shadow-control: 0 1px 2px color-mix(in oklch, var(--text-strong) 10%, transparent);
+  color-scheme: dark;
+  --surface-canvas: oklch(0.13 0.045 258);
+  --surface-sidebar: color-mix(in oklch, oklch(0.19 0.055 255) 78%, transparent);
+  --surface-panel: color-mix(in oklch, oklch(0.23 0.055 252) 82%, transparent);
+  --surface-raised: color-mix(in oklch, oklch(0.28 0.06 248) 76%, transparent);
+  --surface-hover: color-mix(in oklch, oklch(0.34 0.072 242) 72%, transparent);
+  --line-soft: color-mix(in oklch, oklch(0.7 0.13 222) 30%, transparent);
+  --line-strong: color-mix(in oklch, oklch(0.78 0.15 205) 58%, transparent);
+  --text-strong: oklch(0.96 0.024 235);
+  --text-main: oklch(0.86 0.032 237);
+  --text-muted: oklch(0.7 0.045 242);
+  --accent: oklch(0.78 0.15 205);
+  --accent-deep: oklch(0.55 0.14 228);
+  --accent-soft: color-mix(in oklch, var(--accent) 18%, transparent);
+  --accent-violet: oklch(0.72 0.2 285);
+  --accent-magenta: oklch(0.72 0.19 326);
+  --state-info: oklch(0.73 0.17 276);
+  --state-info-soft: color-mix(in oklch, var(--state-info) 18%, transparent);
+  --state-success: oklch(0.76 0.14 164);
+  --state-success-soft: color-mix(in oklch, var(--state-success) 18%, transparent);
+  --state-warning: oklch(0.82 0.13 88);
+  --state-warning-soft: color-mix(in oklch, var(--state-warning) 18%, transparent);
+  --state-danger: oklch(0.72 0.18 18);
+  --state-danger-soft: color-mix(in oklch, var(--state-danger) 18%, transparent);
+  --workflow-edge: oklch(0.82 0.14 205);
+  --workflow-grid-dot: color-mix(in oklch, var(--accent) 52%, transparent);
+  --workflow-stage-input: oklch(0.76 0.08 222);
+  --workflow-stage-input-soft: color-mix(in oklch, var(--workflow-stage-input) 18%, transparent);
+  --workflow-stage-logic: oklch(0.78 0.15 205);
+  --workflow-stage-logic-soft: color-mix(in oklch, var(--workflow-stage-logic) 18%, transparent);
+  --workflow-stage-media: oklch(0.83 0.13 88);
+  --workflow-stage-media-soft: color-mix(in oklch, var(--workflow-stage-media) 18%, transparent);
+  --workflow-stage-output: oklch(0.76 0.14 164);
+  --workflow-stage-output-soft: color-mix(in oklch, var(--workflow-stage-output) 18%, transparent);
+  --shadow-panel:
+    0 24px 70px color-mix(in oklch, black 34%, transparent),
+    0 0 42px color-mix(in oklch, var(--accent) 9%, transparent);
+  --shadow-control:
+    0 1px 0 color-mix(in oklch, white 8%, transparent) inset,
+    0 0 18px color-mix(in oklch, var(--accent) 10%, transparent);
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "SF Mono", Menlo, Consolas, monospace;
   --type-caption: 0.75rem;
@@ -71,7 +78,7 @@ body,
   margin: 0;
   width: 100%;
   min-height: 100%;
-  background: var(--surface-canvas);
+  background: #06101f;
   color: var(--text-main);
   font-family: var(--font-ui);
   font-size: var(--type-body);
@@ -81,19 +88,65 @@ body,
 }
 
 .app-shell {
+  position: relative;
   min-height: 100vh;
-  background: var(--surface-canvas) !important;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 74% 18%, color-mix(in oklch, var(--accent-violet) 22%, transparent) 0 16rem, transparent 30rem),
+    radial-gradient(circle at 16% 78%, color-mix(in oklch, var(--accent) 18%, transparent) 0 14rem, transparent 28rem),
+    #06101f !important;
+}
+
+.app-shell::before,
+.app-shell::after {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  content: "";
+}
+
+.app-shell::before {
+  background:
+    linear-gradient(180deg, rgba(3, 8, 20, 0.2) 0%, rgba(3, 8, 20, 0.68) 64%, rgba(3, 8, 20, 0.9) 100%),
+    url("./assets/tech-city-bg.png") center bottom / cover no-repeat;
+  opacity: 0.88;
+}
+
+.app-shell::after {
+  z-index: -1;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 78px, rgba(56, 217, 255, 0.07) 79px, transparent 80px),
+    repeating-linear-gradient(180deg, transparent 0 42px, rgba(157, 122, 255, 0.06) 43px, transparent 44px),
+    linear-gradient(116deg, transparent 0 42%, rgba(43, 211, 255, 0.2) 45%, transparent 50%),
+    linear-gradient(66deg, transparent 0 53%, rgba(190, 94, 255, 0.18) 57%, transparent 63%);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  animation: dataRain 16s linear infinite;
 }
 
 .ant-layout.app-shell,
 .app-shell .ant-layout {
-  background: var(--surface-canvas) !important;
+  background: transparent !important;
+}
+
+@keyframes dataRain {
+  from {
+    background-position: 0 0, 0 0, 0 0, 0 0;
+  }
+  to {
+    background-position: 160px 0, 0 220px, 72px 0, -96px 0;
+  }
 }
 
 .sidebar {
   background:
-    linear-gradient(180deg, var(--surface-sidebar) 0%, color-mix(in oklch, var(--surface-sidebar) 78%, var(--surface-canvas)) 100%) !important;
-  border-right: 1px solid var(--line-soft);
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-sidebar) 88%, black) 0%, color-mix(in oklch, var(--surface-sidebar) 66%, transparent) 100%) !important;
+  border-right: 1px solid color-mix(in oklch, var(--accent) 24%, transparent);
+  box-shadow:
+    1px 0 0 color-mix(in oklch, white 6%, transparent) inset,
+    20px 0 70px color-mix(in oklch, black 28%, transparent);
+  backdrop-filter: blur(24px) saturate(1.35);
 }
 
 .sidebar .ant-layout-sider-children {
@@ -117,8 +170,9 @@ body,
   border-radius: 10px;
   background: url("../../resources/icon.svg") center / cover no-repeat;
   box-shadow:
-    0 1px 0 color-mix(in oklch, var(--surface-panel) 74%, transparent) inset,
-    0 8px 20px color-mix(in oklch, var(--accent-deep) 18%, transparent);
+    0 1px 0 color-mix(in oklch, white 40%, transparent) inset,
+    0 0 18px color-mix(in oklch, var(--accent) 38%, transparent),
+    0 12px 28px color-mix(in oklch, var(--accent-violet) 22%, transparent);
 }
 
 .brand {
@@ -148,7 +202,7 @@ body,
   margin: 3px 0;
   width: 100%;
   border-radius: var(--radius-md);
-  color: var(--text-main);
+  color: color-mix(in oklch, var(--text-main) 88%, transparent);
   font-weight: var(--weight-medium);
   transition:
     background 160ms ease,
@@ -156,20 +210,26 @@ body,
 }
 
 .side-menu .ant-menu-item .anticon {
-  color: var(--text-muted);
+  color: color-mix(in oklch, var(--accent) 44%, var(--text-muted));
 }
 
 .side-menu .ant-menu-item:hover {
-  background: var(--surface-hover) !important;
+  background: color-mix(in oklch, var(--surface-hover) 68%, transparent) !important;
   color: var(--text-strong) !important;
+  box-shadow: 0 0 22px color-mix(in oklch, var(--accent) 10%, transparent);
 }
 
 .side-menu .ant-menu-item-selected {
-  background: color-mix(in oklch, var(--accent-soft) 76%, var(--surface-panel)) !important;
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--accent) 26%, transparent), color-mix(in oklch, var(--accent-violet) 10%, transparent)) !important;
   color: var(--text-strong) !important;
   box-shadow:
-    0 1px 0 color-mix(in oklch, var(--surface-panel) 76%, transparent) inset,
-    0 1px 2px color-mix(in oklch, var(--accent-deep) 10%, transparent);
+    0 1px 0 color-mix(in oklch, white 14%, transparent) inset,
+    0 0 28px color-mix(in oklch, var(--accent) 18%, transparent);
+}
+
+.side-menu .ant-menu-item-selected::after {
+  border-inline-end-color: var(--accent) !important;
 }
 
 .side-menu .ant-menu-item-selected .anticon {
@@ -185,15 +245,19 @@ body,
   border-radius: var(--radius-md);
   color: var(--text-muted);
   border: 1px solid color-mix(in oklch, var(--line-soft) 70%, transparent);
-  background: color-mix(in oklch, var(--surface-hover) 58%, var(--surface-panel));
+  background: color-mix(in oklch, var(--surface-hover) 52%, transparent);
   font-size: var(--type-caption);
+  box-shadow: 0 0 18px color-mix(in oklch, var(--accent) 8%, transparent);
 }
 
 .header {
   height: 76px;
   padding: 0 var(--space-3xl);
-  background: var(--surface-panel);
-  border-bottom: 1px solid var(--line-soft);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--surface-panel) 86%, transparent), color-mix(in oklch, var(--surface-panel) 58%, transparent));
+  border-bottom: 1px solid color-mix(in oklch, var(--accent) 24%, transparent);
+  box-shadow: 0 18px 56px color-mix(in oklch, black 18%, transparent);
+  backdrop-filter: blur(22px) saturate(1.25);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -238,13 +302,15 @@ body,
   justify-content: center;
   gap: 0.4375rem;
   color: var(--text-muted);
-  background: var(--surface-raised);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-raised) 88%, transparent), color-mix(in oklch, var(--surface-panel) 70%, transparent));
   font-size: var(--type-meta);
   box-shadow: var(--shadow-control);
 }
 
 .toolbar-pill .anticon {
   color: var(--accent);
+  filter: drop-shadow(0 0 8px color-mix(in oklch, var(--accent) 48%, transparent));
 }
 
 .compact-nav {
@@ -265,7 +331,9 @@ body,
 
 .content {
   padding: var(--space-2xl) var(--space-3xl) 2.5rem;
-  background: var(--surface-canvas) !important;
+  background:
+    radial-gradient(circle at 76% 6%, color-mix(in oklch, var(--accent-violet) 14%, transparent), transparent 21rem),
+    linear-gradient(180deg, color-mix(in oklch, black 4%, transparent), color-mix(in oklch, black 16%, transparent)) !important;
   overflow: auto;
 }
 
@@ -293,8 +361,10 @@ body,
   padding: var(--space-3xl);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-panel) 92%, transparent), color-mix(in oklch, var(--surface-raised) 76%, transparent));
   box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(22px) saturate(1.2);
 }
 
 .task-strip {
@@ -327,8 +397,10 @@ body,
   padding: var(--space-3xl);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-control);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--surface-panel) 92%, transparent), color-mix(in oklch, var(--surface-raised) 70%, transparent));
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(20px) saturate(1.2);
 }
 
 .home-command-head,
@@ -394,7 +466,7 @@ body,
 }
 
 .workflow-launch-row:hover {
-  background: var(--surface-raised);
+  background: color-mix(in oklch, var(--surface-raised) 76%, transparent);
   border-color: color-mix(in oklch, var(--accent) 42%, var(--line-strong));
   box-shadow: var(--shadow-control);
 }
@@ -408,7 +480,8 @@ body,
   flex: 0 0 auto;
   color: var(--accent);
   font-size: 1.25rem;
-  background: var(--surface-panel);
+  background:
+    linear-gradient(145deg, color-mix(in oklch, var(--accent-soft) 78%, transparent), color-mix(in oklch, var(--surface-panel) 70%, transparent));
   border: 1px solid var(--line-soft);
   box-shadow: var(--shadow-control);
 }
@@ -447,8 +520,10 @@ body,
   padding: var(--space-2xl);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-control);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-panel) 88%, transparent), color-mix(in oklch, var(--surface-raised) 72%, transparent));
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(20px) saturate(1.2);
 }
 
 .queue-filter-list {
@@ -499,8 +574,10 @@ body,
   padding: var(--space-2xl);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-control);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-panel) 88%, transparent), color-mix(in oklch, var(--surface-raised) 72%, transparent));
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(20px) saturate(1.2);
 }
 
 .desktop-form .ant-form-item {
@@ -583,28 +660,32 @@ body,
 
 .ant-btn-primary,
 .primary-action {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--surface-panel);
-  box-shadow: var(--shadow-control);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--accent) 92%, white), color-mix(in oklch, var(--accent-violet) 72%, var(--accent))) !important;
+  border-color: color-mix(in oklch, var(--accent) 74%, white) !important;
+  color: #03101d !important;
+  box-shadow:
+    0 1px 0 color-mix(in oklch, white 34%, transparent) inset,
+    0 0 22px color-mix(in oklch, var(--accent) 26%, transparent);
 }
 
 .ant-btn-primary:hover,
 .primary-action:hover {
-  background: color-mix(in oklch, var(--accent) 88%, var(--text-strong)) !important;
-  border-color: color-mix(in oklch, var(--accent) 88%, var(--text-strong)) !important;
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--accent) 86%, white), color-mix(in oklch, var(--accent-magenta) 48%, var(--accent-violet))) !important;
+  border-color: color-mix(in oklch, var(--accent) 86%, white) !important;
 }
 
 .secondary-button {
   border-color: var(--line-soft);
   color: var(--text-main);
-  background: var(--surface-raised);
+  background: color-mix(in oklch, var(--surface-raised) 82%, transparent);
 }
 
 .secondary-button:hover {
   border-color: var(--line-strong) !important;
   color: var(--text-strong) !important;
-  background: var(--surface-hover) !important;
+  background: color-mix(in oklch, var(--surface-hover) 78%, transparent) !important;
 }
 
 .icon-button {
@@ -624,13 +705,13 @@ body,
   justify-content: center;
   border-color: var(--line-soft);
   color: var(--text-main);
-  background: var(--surface-raised);
+  background: color-mix(in oklch, var(--surface-raised) 82%, transparent);
 }
 
 .file-picker-button:hover {
   border-color: var(--line-strong) !important;
   color: var(--accent) !important;
-  background: var(--surface-hover) !important;
+  background: color-mix(in oklch, var(--surface-hover) 78%, transparent) !important;
 }
 
 .ant-input,
@@ -640,9 +721,9 @@ body,
   min-height: 36px;
   border-color: var(--line-soft) !important;
   border-radius: var(--radius-md) !important;
-  background: var(--surface-raised) !important;
+  background: color-mix(in oklch, var(--surface-raised) 84%, transparent) !important;
   color: var(--text-main) !important;
-  box-shadow: none !important;
+  box-shadow: 0 1px 0 color-mix(in oklch, white 5%, transparent) inset !important;
 }
 
 .ant-input,
@@ -669,12 +750,47 @@ body,
 
 .ant-input-group-addon {
   border-color: var(--line-soft) !important;
-  background: var(--surface-raised) !important;
+  background: color-mix(in oklch, var(--surface-raised) 86%, transparent) !important;
+  color: var(--text-muted) !important;
+}
+
+.ant-input::placeholder,
+.ant-select-selection-placeholder {
+  color: color-mix(in oklch, var(--text-muted) 70%, transparent) !important;
+}
+
+.ant-select-dropdown,
+.ant-picker-dropdown .ant-picker-panel-container,
+.ant-popover-inner,
+.ant-modal-content {
+  background: color-mix(in oklch, oklch(0.17 0.052 255) 94%, transparent) !important;
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-panel) !important;
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.ant-select-item,
+.ant-popover-inner,
+.ant-modal-content {
+  color: var(--text-main) !important;
+}
+
+.ant-select-item-option-active:not(.ant-select-item-option-disabled),
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: color-mix(in oklch, var(--surface-hover) 78%, transparent) !important;
+}
+
+.ant-message-notice-content {
+  color: var(--text-main);
+  background: color-mix(in oklch, var(--surface-panel) 94%, transparent);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px);
 }
 
 .desktop-table .ant-table {
   color: var(--text-main);
-  background: transparent;
+  background: transparent !important;
   font-variant-numeric: tabular-nums;
 }
 
@@ -682,6 +798,8 @@ body,
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
   overflow: hidden;
+  background: color-mix(in oklch, var(--surface-panel) 70%, transparent);
+  box-shadow: 0 1px 0 color-mix(in oklch, white 5%, transparent) inset;
 }
 
 .desktop-table .ant-table-cell {
@@ -689,7 +807,7 @@ body,
 }
 
 .desktop-table .ant-table-thead > tr > th {
-  background: var(--surface-hover) !important;
+  background: color-mix(in oklch, var(--surface-hover) 78%, transparent) !important;
   color: var(--text-muted);
   font-size: var(--type-caption);
   font-weight: var(--weight-semibold);
@@ -706,11 +824,11 @@ body,
 }
 
 .desktop-table .ant-table-tbody > tr:hover > td {
-  background: var(--surface-hover) !important;
+  background: color-mix(in oklch, var(--surface-hover) 70%, transparent) !important;
 }
 
 .desktop-table .ant-table-expanded-row > td {
-  background: color-mix(in oklch, var(--surface-hover) 54%, var(--surface-panel)) !important;
+  background: color-mix(in oklch, var(--surface-hover) 54%, transparent) !important;
   padding: 0.875rem var(--space-lg) !important;
 }
 
@@ -748,6 +866,43 @@ body,
 .workflow-heading span {
   color: var(--text-muted);
   font-size: var(--type-caption);
+}
+
+.workflow-input {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+}
+
+.workflow-input-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.workflow-input-heading strong {
+  color: var(--text-strong);
+}
+
+.workflow-input-heading span {
+  color: var(--text-muted);
+  font-size: var(--type-caption);
+}
+
+.workflow-input pre {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: var(--type-caption);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .step-table .ant-table-container {
@@ -877,7 +1032,10 @@ body,
   display: flex;
   align-items: center;
   background:
-    linear-gradient(180deg, var(--surface-panel) 0%, color-mix(in oklch, var(--surface-raised) 88%, var(--accent-soft)) 100%) !important;
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-panel) 90%, transparent) 0%, color-mix(in oklch, var(--surface-raised) 76%, var(--accent-soft)) 100%) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, white 5%, transparent) inset,
+    0 0 22px color-mix(in oklch, var(--accent) 12%, transparent) !important;
 }
 
 .workflow-select.ant-select-single .ant-select-selection-search {
@@ -903,7 +1061,7 @@ body,
   margin-top: -0.75rem;
   display: grid;
   place-items: center;
-  color: color-mix(in oklch, var(--text-muted) 82%, var(--accent));
+  color: color-mix(in oklch, var(--text-strong) 70%, var(--accent));
   font-size: 0.75rem;
 }
 
@@ -918,18 +1076,22 @@ body,
 
 .workflow-select.ant-select-open .ant-select-selector {
   border-color: color-mix(in oklch, var(--accent) 58%, var(--line-soft)) !important;
-  background: var(--surface-panel) !important;
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 14%, transparent) !important;
+  background: color-mix(in oklch, var(--surface-panel) 94%, transparent) !important;
+  box-shadow:
+    0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent),
+    0 0 30px color-mix(in oklch, var(--accent) 18%, transparent) !important;
 }
 
 .workflow-select-popup {
   padding: var(--space-xs) !important;
   border: 1px solid color-mix(in oklch, var(--line-soft) 76%, var(--surface-panel));
   border-radius: var(--radius-md) !important;
-  background: var(--surface-panel) !important;
+  background: color-mix(in oklch, oklch(0.17 0.052 255) 94%, transparent) !important;
   box-shadow:
-    0 1px 0 color-mix(in oklch, var(--surface-panel) 78%, transparent) inset,
-    0 16px 36px color-mix(in oklch, var(--text-strong) 14%, transparent) !important;
+    0 1px 0 color-mix(in oklch, white 10%, transparent) inset,
+    0 24px 56px color-mix(in oklch, black 42%, transparent),
+    0 0 40px color-mix(in oklch, var(--accent) 14%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(1.25);
 }
 
 .workflow-select-popup .ant-select-item {
@@ -958,12 +1120,13 @@ body,
 }
 
 .workflow-select-popup .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
-  background: var(--surface-hover) !important;
+  background: color-mix(in oklch, var(--surface-hover) 74%, transparent) !important;
 }
 
 .workflow-select-popup .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
-  background: var(--accent-soft) !important;
-  color: var(--accent-deep) !important;
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--accent) 22%, transparent), color-mix(in oklch, var(--accent-violet) 14%, transparent)) !important;
+  color: var(--text-strong) !important;
 }
 
 .workflow-select-popup .ant-select-item-option-selected .ant-select-item-option-content {
@@ -985,12 +1148,32 @@ body,
   padding: var(--space-xl) var(--space-2xl);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-control);
+  overflow: hidden;
+  background:
+    linear-gradient(110deg, color-mix(in oklch, var(--surface-panel) 94%, transparent), color-mix(in oklch, var(--surface-raised) 70%, transparent)),
+    linear-gradient(90deg, color-mix(in oklch, var(--accent) 12%, transparent), transparent 45%, color-mix(in oklch, var(--accent-violet) 14%, transparent));
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(22px) saturate(1.24);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-xl);
+}
+
+.workflow-studio-header::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(112deg, transparent 0 59%, color-mix(in oklch, var(--accent) 18%, transparent) 60%, transparent 64%),
+    repeating-linear-gradient(90deg, transparent 0 34px, color-mix(in oklch, var(--accent-violet) 8%, transparent) 35px, transparent 36px);
+  opacity: 0.8;
+}
+
+.workflow-studio-header > * {
+  position: relative;
+  z-index: 1;
 }
 
 .workflow-studio-header h4,
@@ -1008,7 +1191,7 @@ body,
 .workflow-kicker {
   display: block;
   margin-bottom: var(--space-xs);
-  color: var(--accent);
+  color: color-mix(in oklch, var(--accent) 82%, white);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: var(--weight-semibold);
@@ -1038,8 +1221,10 @@ body,
   min-width: 0;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-control);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-panel) 90%, transparent), color-mix(in oklch, var(--surface-raised) 74%, transparent));
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(20px) saturate(1.2);
 }
 
 .workflow-canvas-shell {
@@ -1051,7 +1236,9 @@ body,
 .workflow-canvas-toolbar {
   min-height: 72px;
   padding: var(--space-lg) var(--space-xl);
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid color-mix(in oklch, var(--accent) 20%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--surface-panel) 76%, transparent), color-mix(in oklch, var(--surface-raised) 50%, transparent));
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1074,7 +1261,8 @@ body,
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
-  background: var(--surface-raised);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-raised) 86%, transparent), color-mix(in oklch, var(--surface-panel) 64%, transparent));
   color: var(--text-muted);
   font-size: var(--type-caption);
   font-weight: var(--weight-medium);
@@ -1085,22 +1273,62 @@ body,
   min-height: 480px;
   position: relative;
   background:
-    linear-gradient(90deg, color-mix(in oklch, var(--surface-hover) 44%, transparent) 1px, transparent 1px),
-    linear-gradient(180deg, color-mix(in oklch, var(--surface-hover) 44%, transparent) 1px, transparent 1px),
-    var(--surface-panel);
+    radial-gradient(circle at 64% 18%, color-mix(in oklch, var(--accent-violet) 12%, transparent), transparent 18rem),
+    linear-gradient(90deg, color-mix(in oklch, var(--accent) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(180deg, color-mix(in oklch, var(--accent) 10%, transparent) 1px, transparent 1px),
+    color-mix(in oklch, oklch(0.15 0.048 252) 86%, transparent);
   background-size: 112px 112px;
   overflow: hidden;
+}
+
+.workflow-flow-frame::before,
+.workflow-flow-frame::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+}
+
+.workflow-flow-frame::before {
+  z-index: 1;
+  background:
+    linear-gradient(115deg, transparent 0 58%, color-mix(in oklch, var(--accent) 18%, transparent) 59%, transparent 62%),
+    repeating-linear-gradient(180deg, transparent 0 36px, color-mix(in oklch, var(--accent-violet) 8%, transparent) 37px, transparent 38px);
+  mix-blend-mode: screen;
+  opacity: 0.72;
+  animation: flowScan 11s linear infinite;
+}
+
+.workflow-flow-frame::after {
+  z-index: 0;
+  background:
+    linear-gradient(180deg, transparent, color-mix(in oklch, black 16%, transparent)),
+    radial-gradient(circle at 50% 50%, transparent 0 46%, color-mix(in oklch, black 24%, transparent) 100%);
+}
+
+.workflow-flow-frame .react-flow {
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes flowScan {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 120px 0, 0 180px;
+  }
 }
 
 .workflow-flow-frame .react-flow {
   --xy-edge-stroke: var(--workflow-edge);
   --xy-edge-stroke-selected: var(--accent);
-  --xy-controls-button-background-color: var(--surface-raised);
+  --xy-controls-button-background-color: color-mix(in oklch, var(--surface-raised) 90%, transparent);
   --xy-controls-button-background-color-hover: var(--surface-hover);
   --xy-controls-button-border-color: var(--line-soft);
   --xy-controls-button-color: var(--text-main);
-  --xy-minimap-background-color: color-mix(in oklch, var(--surface-panel) 92%, var(--surface-hover));
-  --xy-minimap-mask-background-color: color-mix(in oklch, var(--surface-canvas) 62%, transparent);
+  --xy-minimap-background-color: color-mix(in oklch, var(--surface-panel) 92%, transparent);
+  --xy-minimap-mask-background-color: color-mix(in oklch, black 44%, transparent);
   --xy-background-pattern-dots-color-default: var(--workflow-grid-dot);
 }
 
@@ -1126,17 +1354,20 @@ body,
   --node-stage-soft: var(--workflow-stage-logic-soft);
   width: 218px;
   min-height: 152px;
-  border: 1px solid color-mix(in oklch, var(--line-soft) 82%, transparent);
+  border: 1px solid color-mix(in oklch, var(--node-stage) 28%, var(--line-soft));
   border-radius: var(--radius-md);
   padding: var(--space-md);
-  background: var(--surface-raised);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-raised) 86%, transparent), color-mix(in oklch, var(--surface-panel) 76%, transparent));
   color: var(--text-main);
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   gap: var(--space-sm);
   box-shadow:
-    0 1px 0 color-mix(in oklch, var(--surface-panel) 74%, transparent) inset,
-    0 10px 22px color-mix(in oklch, var(--text-strong) 6%, transparent);
+    0 1px 0 color-mix(in oklch, white 9%, transparent) inset,
+    0 12px 28px color-mix(in oklch, black 24%, transparent),
+    0 0 20px color-mix(in oklch, var(--node-stage) 8%, transparent);
+  backdrop-filter: blur(12px) saturate(1.2);
   transition:
     border-color 180ms ease,
     background 180ms ease,
@@ -1146,11 +1377,15 @@ body,
 
 .workflow-flow-node:hover,
 .workflow-flow-node.selected {
-  border-color: color-mix(in oklch, var(--node-stage) 58%, var(--line-soft));
-  background: var(--surface-panel);
+  border-color: color-mix(in oklch, var(--node-stage) 78%, white);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-raised) 96%, transparent), color-mix(in oklch, var(--surface-panel) 84%, transparent));
   box-shadow:
-    0 0 0 3px color-mix(in oklch, var(--node-stage-soft) 72%, transparent),
-    0 14px 30px color-mix(in oklch, var(--text-strong) 8%, transparent);
+    0 0 0 1px color-mix(in oklch, white 10%, transparent) inset,
+    0 0 0 3px color-mix(in oklch, var(--node-stage) 16%, transparent),
+    0 0 32px color-mix(in oklch, var(--node-stage) 26%, transparent),
+    0 18px 36px color-mix(in oklch, black 32%, transparent);
+  transform: translateY(-1px);
 }
 
 .workflow-flow-node.stage-input {
@@ -1192,7 +1427,9 @@ body,
   display: grid;
   place-items: center;
   color: var(--node-stage);
-  background: color-mix(in oklch, var(--node-stage-soft) 82%, var(--surface-panel));
+  background:
+    radial-gradient(circle at 35% 25%, color-mix(in oklch, white 34%, transparent), transparent 42%),
+    color-mix(in oklch, var(--node-stage-soft) 88%, var(--surface-panel));
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: var(--weight-bold);
@@ -1241,7 +1478,8 @@ body,
   height: 1.625rem;
   border: 1px solid color-mix(in oklch, var(--node-stage) 40%, var(--surface-panel));
   border-radius: 999px;
-  background: color-mix(in oklch, var(--node-stage) 76%, var(--surface-panel));
+  background: color-mix(in oklch, var(--node-stage) 88%, var(--surface-panel));
+  box-shadow: 0 0 14px color-mix(in oklch, var(--node-stage) 54%, transparent);
 }
 
 .workflow-flow-handle.position-left {
@@ -1276,6 +1514,7 @@ body,
   align-items: center;
   color: var(--workflow-stage-logic);
   background: var(--workflow-stage-logic-soft);
+  box-shadow: 0 0 14px color-mix(in oklch, var(--accent) 10%, transparent);
   font-size: var(--type-caption);
   font-weight: var(--weight-semibold);
   line-height: 1.1;
@@ -1312,7 +1551,9 @@ body,
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
   overflow: hidden;
+  background: color-mix(in oklch, var(--surface-panel) 92%, transparent) !important;
   box-shadow: var(--shadow-control);
+  backdrop-filter: blur(10px);
 }
 
 .workflow-minimap-node {
@@ -1344,6 +1585,7 @@ body,
   border-radius: var(--radius-sm);
   overflow: hidden;
   box-shadow: var(--shadow-control);
+  backdrop-filter: blur(10px);
 }
 
 .workflow-inspector {
@@ -1352,7 +1594,9 @@ body,
   display: grid;
   align-content: start;
   gap: var(--space-md);
-  background: color-mix(in oklch, var(--surface-raised) 72%, var(--surface-panel));
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-panel) 92%, transparent), color-mix(in oklch, var(--surface-raised) 72%, transparent)),
+    linear-gradient(140deg, color-mix(in oklch, var(--accent-violet) 10%, transparent), transparent 45%);
 }
 
 .workflow-inspector-head {
@@ -1372,7 +1616,9 @@ body,
   padding: 0.625rem;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-raised) 78%, transparent), color-mix(in oklch, var(--surface-panel) 70%, transparent));
+  box-shadow: 0 1px 0 color-mix(in oklch, white 6%, transparent) inset;
 }
 
 .workflow-node-facts dt,
@@ -1413,7 +1659,7 @@ body,
   place-items: center;
   cursor: pointer;
   color: var(--text-muted);
-  background: var(--surface-panel);
+  background: color-mix(in oklch, var(--surface-panel) 86%, transparent);
   font: inherit;
   font-family: var(--font-mono);
   font-size: var(--type-caption);
@@ -1428,7 +1674,8 @@ body,
 .workflow-strip-node.selected {
   border-color: color-mix(in oklch, var(--accent) 56%, var(--line-soft));
   color: var(--accent);
-  background: var(--accent-soft);
+  background: color-mix(in oklch, var(--accent-soft) 86%, var(--surface-panel));
+  box-shadow: 0 0 18px color-mix(in oklch, var(--accent) 18%, transparent);
 }
 
 .workflow-empty-prompt {
@@ -1440,7 +1687,7 @@ body,
   place-items: center;
   gap: var(--space-sm);
   text-align: center;
-  background: var(--surface-panel);
+  background: color-mix(in oklch, var(--surface-panel) 82%, transparent);
 }
 
 .workflow-empty-prompt > span {
@@ -1467,7 +1714,9 @@ body,
   padding: var(--space-md);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-raised) 82%, transparent), color-mix(in oklch, var(--surface-panel) 68%, transparent));
+  box-shadow: 0 1px 0 color-mix(in oklch, white 6%, transparent) inset;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-xs);
@@ -1496,7 +1745,7 @@ body,
 .prompt-vars code {
   padding: 0.1875rem var(--space-xs);
   border-radius: var(--radius-sm);
-  background: var(--surface-hover);
+  background: color-mix(in oklch, var(--surface-hover) 76%, transparent);
   color: var(--text-main);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
@@ -1506,6 +1755,9 @@ body,
   font-family: var(--font-mono);
   font-size: var(--type-caption);
   line-height: 1.55;
+  background:
+    linear-gradient(180deg, color-mix(in oklch, oklch(0.14 0.04 252) 90%, transparent), color-mix(in oklch, oklch(0.18 0.05 250) 82%, transparent)) !important;
+  color: color-mix(in oklch, var(--text-main) 94%, white) !important;
 }
 
 .workflow-editor-actions {
@@ -1553,6 +1805,11 @@ body,
   color: var(--state-warning);
 }
 
+.status-tag.waiting_confirmation {
+  background: var(--state-warning-soft);
+  color: var(--state-warning);
+}
+
 .status-tag.canceled {
   background: var(--surface-hover);
   color: var(--text-muted);
@@ -1564,8 +1821,31 @@ body,
   color: var(--text-muted);
 }
 
+.ant-empty,
 .ant-empty-description {
-  color: var(--text-muted);
+  color: var(--text-muted) !important;
+}
+
+.ant-empty-image {
+  opacity: 0.72;
+  filter: drop-shadow(0 0 16px color-mix(in oklch, var(--accent) 20%, transparent));
+}
+
+.ant-empty-image svg,
+.ant-empty-image img {
+  filter: invert(84%) sepia(28%) saturate(1020%) hue-rotate(160deg) brightness(94%);
+}
+
+.ant-empty-img-simple-ellipse {
+  fill: color-mix(in oklch, var(--accent) 12%, transparent) !important;
+}
+
+.ant-empty-img-simple-g {
+  stroke: color-mix(in oklch, var(--accent) 36%, transparent) !important;
+}
+
+.ant-empty-img-simple-path {
+  fill: color-mix(in oklch, var(--accent-violet) 18%, transparent) !important;
 }
 
 @media (max-width: 900px) {
@@ -1580,7 +1860,8 @@ body,
     display: flex;
     gap: var(--space-xs);
     overflow-x: auto;
-    background: var(--surface-panel);
+    background: color-mix(in oklch, var(--surface-panel) 88%, transparent);
+    backdrop-filter: blur(18px) saturate(1.2);
   }
 
   .compact-nav button {
@@ -1602,7 +1883,7 @@ body,
   .compact-nav button[aria-current="page"] {
     border-color: var(--line-soft);
     color: var(--accent);
-    background: var(--accent-soft);
+    background: color-mix(in oklch, var(--accent-soft) 78%, transparent);
   }
 
   .header {

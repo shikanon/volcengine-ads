@@ -80,8 +80,10 @@ export interface TaskRepository {
   updateTaskStatus(taskId: string, status: TaskStatus, progress: number, error?: string): void;
   updateTaskProgress(taskId: string, progress: number): void;
   updateStepRunning(taskId: string, step: string): void;
+  updateStepWaitingConfirmation(taskId: string, step: string, artifactPath?: string, logs?: string): void;
   updateStepSuccess(taskId: string, step: string, artifactPath?: string, logs?: string): void;
   updateStepFailed(taskId: string, step: string, error: string): void;
+  confirmWaitingStep(taskId: string): TaskRecord | undefined;
   resetStepAndFollowing(taskId: string, stepId: string): void;
   listAssets(): AssetRecord[];
   createAsset(asset: Omit<AssetRecord, 'id' | 'createdAt'>): AssetRecord;
@@ -278,6 +280,19 @@ export class SqliteTaskRepository implements TaskRepository {
       .run(Date.now(), taskId, step);
   }
 
+  updateStepWaitingConfirmation(taskId: string, step: string, artifactPath?: string, logs?: string): void {
+    this.db
+      .prepare(
+        `UPDATE task_steps
+         SET status = 'waiting_confirmation',
+             artifact_path = COALESCE(?, artifact_path),
+             logs = ?,
+             finished_at = NULL
+         WHERE task_id = ? AND step = ?`,
+      )
+      .run(artifactPath ?? null, logs ?? null, taskId, step);
+  }
+
   updateStepSuccess(taskId: string, step: string, artifactPath?: string, logs?: string): void {
     this.db
       .prepare(
@@ -296,6 +311,36 @@ export class SqliteTaskRepository implements TaskRepository {
          WHERE task_id = ? AND step = ?`,
       )
       .run(error, Date.now(), taskId, step);
+  }
+
+  confirmWaitingStep(taskId: string): TaskRecord | undefined {
+    const task = this.getTask(taskId);
+    if (!task || task.status !== 'waiting_confirmation') {
+      return undefined;
+    }
+    const step = task.steps.find((item) => item.status === 'waiting_confirmation');
+    if (!step) {
+      return undefined;
+    }
+    const now = Date.now();
+    const transaction = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE task_steps
+           SET status = 'success', logs = ?, finished_at = ?
+           WHERE id = ?`,
+        )
+        .run('脚本文案已确认', now, step.id);
+      this.db
+        .prepare(
+          `UPDATE tasks
+           SET status = 'queued', error = NULL, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(now, taskId);
+    });
+    transaction();
+    return this.getTask(taskId);
   }
 
   resetStepAndFollowing(taskId: string, stepId: string): void {

@@ -4,6 +4,7 @@ import type { IpcRendererEvent } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels.js';
 import type {
   AssetRecord,
+  ConfirmScriptRequest,
   CreateTaskRequest,
   OpenPathRequest,
   PickFileRequest,
@@ -25,6 +26,8 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.task.retry, taskId) as Promise<TaskRecord | undefined>,
     retryStep: (request: RetryStepRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.task.retryStep, request) as Promise<TaskRecord | undefined>,
+    confirmScript: (request: ConfirmScriptRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.task.confirmScript, request) as Promise<TaskRecord>,
     cancel: (taskId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.task.cancel, taskId) as Promise<TaskRecord | undefined>,
     delete: (taskId: string) =>

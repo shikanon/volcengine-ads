@@ -48,6 +48,21 @@ export class TaskWorker {
     this.enqueue(request.taskId);
   }
 
+  confirmScript(taskId: string): TaskRecord {
+    const task = this.repository.confirmWaitingStep(taskId);
+    if (!task) {
+      throw new AppError('E_TASK_STATE', '当前任务没有待确认的脚本文案');
+    }
+    this.emitProgress({
+      taskId: task.id,
+      status: 'queued',
+      progress: task.progress,
+      message: '脚本文案已确认，任务已继续排队',
+    });
+    this.enqueue(task.id);
+    return task;
+  }
+
   cancelTask(taskId: string): TaskRecord | undefined {
     const task = this.repository.cancelTask(taskId);
     if (task) {

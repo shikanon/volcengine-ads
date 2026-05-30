@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { Button, Form, Input, InputNumber, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined, UserOutlined } from '@ant-design/icons';
 
@@ -14,6 +16,7 @@ interface FormValues {
 export function Avatar() {
   const [form] = Form.useForm<FormValues>();
   const createTask = useTasksStore((state) => state.createTask);
+  const [submitting, setSubmitting] = useState(false);
 
   async function pickAvatar() {
     const [path] = await api.asset.pickFiles({
@@ -31,9 +34,17 @@ export function Avatar() {
   }
 
   async function submit(values: FormValues) {
-    await createTask({ type: 'avatar', input: values });
-    form.resetFields();
-    void message.success('任务已入队');
+    setSubmitting(true);
+    try {
+      await createTask({ type: 'avatar', input: values });
+      form.resetFields();
+      void message.success('任务已入队');
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -52,7 +63,11 @@ export function Avatar() {
         >
           <Form.Item label="数字人图片" required>
             <Space.Compact className="full-width">
-              <Form.Item name="avatarImagePath" noStyle rules={[{ required: true }]}>
+              <Form.Item
+                name="avatarImagePath"
+                noStyle
+                rules={[{ required: true, message: '请选择数字人图片' }]}
+              >
                 <Input readOnly />
               </Form.Item>
               <Button
@@ -64,13 +79,33 @@ export function Avatar() {
               />
             </Space.Compact>
           </Form.Item>
-          <Form.Item name="brandIntro" label="品牌介绍" rules={[{ required: true }]}>
+          <Form.Item
+            name="brandIntro"
+            label="品牌介绍"
+            rules={[
+              { required: true, message: '请输入品牌介绍' },
+              { min: 20, message: '品牌介绍至少 20 字' },
+              { max: 1000, message: '品牌介绍不能超过 1000 字' },
+            ]}
+          >
             <Input.TextArea rows={5} />
           </Form.Item>
           <Form.Item
             name="productImagePaths"
             label="产品图"
-            rules={[{ required: true }]}
+            rules={[
+              {
+                validator: (_rule, value: unknown) => {
+                  if (!Array.isArray(value) || value.length < 1) {
+                    return Promise.reject(new Error('请选择 1..3 张产品图'));
+                  }
+                  if (value.length > 3) {
+                    return Promise.reject(new Error('产品图最多选择 3 张'));
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
             getValueProps={(value?: string[]) => ({ value: (value ?? []).join('\n') })}
           >
             <Input.TextArea readOnly rows={3} />
@@ -81,7 +116,13 @@ export function Avatar() {
           <Form.Item name="duration" label="视频时长">
             <InputNumber min={15} max={60} className="number-input" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" icon={<UserOutlined />} className="primary-action">
+          <Button
+            type="primary"
+            htmlType="submit"
+            icon={<UserOutlined />}
+            className="primary-action"
+            loading={submitting}
+          >
             创建口播任务
           </Button>
         </Form>

@@ -10,6 +10,7 @@ import { fetch } from 'undici';
 import { AppError } from '../errors.js';
 import type { RuntimeCredentials } from '../secure/keystore.js';
 import { uploadLocalFileForAsr } from '../storage/aliyun-oss.js';
+import { SUPPORTED_TTS_SPEAKERS } from '../../shared/types.js';
 import type {
   AudioResult,
   ChatContentPart,
@@ -50,6 +51,7 @@ const SEEDANCE_AUDIO_EXTS = new Set(['.wav', '.mp3']);
 const ASR_AUDIO_EXTS = new Set(['.wav', '.mp3', '.ogg', '.m4a']);
 const TTS_AUDIO_CHUNK_CODES = new Set([0, 3000]);
 const TTS_SUCCESS_TERMINAL_CODES = new Set([20000000]);
+const TTS_RESOURCE_ID = 'seed-tts-2.0';
 const MIB = 1024 * 1024;
 const EMPTY_TRANSCRIPT: TranscriptResult = { text: '', segments: [] };
 
@@ -111,6 +113,20 @@ function requireNonEmpty(value: string | undefined, field: string): string {
     throw new AppError('E_INPUT_VALIDATION', `${field} 不能为空`);
   }
   return normalized;
+}
+
+function normalizeTtsSpeaker(value: string | undefined, fallback: string): string {
+  const speaker = (value ?? fallback).trim();
+  if (speaker === 'volcano_tts') {
+    return 'zh_female_vv_uranus_bigtts';
+  }
+  if (!SUPPORTED_TTS_SPEAKERS.includes(speaker as (typeof SUPPORTED_TTS_SPEAKERS)[number])) {
+    throw new AppError(
+      'E_INPUT_VALIDATION',
+      `TTS 音色不支持：${speaker}，请使用设置页提供的音色`,
+    );
+  }
+  return speaker;
 }
 
 function requireLocalFile(path: string | undefined, field: string): string {
@@ -611,6 +627,7 @@ export class VolcengineModelClient implements ModelClient {
     const outputPath = requireNonEmpty(req.outputPath, 'Seedance 输出路径');
     const durationSec = requireIntegerRange(req.durationSec ?? 10, 'Seedance 视频时长', 4, 15);
     const resolution = normalizeSeedanceResolution(req.resolution);
+    const ratio = normalizeSeedanceRatio(req.ratio);
     const refImagePaths = req.refImagePaths ?? [];
     if (refImagePaths.length > 9) {
       throw new AppError('E_INPUT_VALIDATION', 'Seedance 参考图最多支持 9 张');
@@ -641,6 +658,7 @@ export class VolcengineModelClient implements ModelClient {
       outputPath,
       durationSec,
       resolution,
+      ratio,
       req.generateAudio ?? false,
     );
   }
@@ -800,13 +818,13 @@ export class VolcengineModelClient implements ModelClient {
     throw new AppError('E_MODEL_API_FAILED', 'ASR 任务轮询超时');
   }
 
-  async tts(text: string, voice: string): Promise<AudioResult> {
+  async tts(text: string, voice?: string): Promise<AudioResult> {
     const credentials = this.credentials;
-    if (!credentials.ttsAppId || !credentials.ttsToken) {
-      throw new AppError('E_MODEL_API_FAILED', 'TTS AppId 或 Token 未配置');
+    if (!credentials.ttsApiKey && (!credentials.ttsAppId || !credentials.ttsToken)) {
+      throw new AppError('E_MODEL_API_FAILED', 'TTS API Key 未配置');
     }
     const normalizedText = requireNonEmpty(text, 'TTS 文本');
-    const normalizedVoice = requireNonEmpty(voice, 'TTS 音色');
+    const normalizedVoice = normalizeTtsSpeaker(voice, credentials.provider.ttsVoice);
     if (normalizedText.length > 1000) {
       throw new AppError('E_INPUT_VALIDATION', 'TTS 文本不能超过 1000 字符');
     }
@@ -820,9 +838,13 @@ export class VolcengineModelClient implements ModelClient {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'X-Api-App-Id': credentials.ttsAppId ?? '',
-                'X-Api-Access-Key': credentials.ttsToken ?? '',
-                'X-Api-Resource-Id': 'seed-tts-2.0',
+                ...(credentials.ttsApiKey
+                  ? { 'X-Api-Key': credentials.ttsApiKey }
+                  : {
+                      'X-Api-App-Id': credentials.ttsAppId ?? '',
+                      'X-Api-Access-Key': credentials.ttsToken ?? '',
+                    }),
+                'X-Api-Resource-Id': TTS_RESOURCE_ID,
               },
               body: JSON.stringify({
                 user: { uid: 'volcengine_ads_local' },
@@ -842,7 +864,10 @@ export class VolcengineModelClient implements ModelClient {
           );
           const body = await response.text();
           if (!response.ok) {
-            throw new AppError('E_MODEL_API_FAILED', `TTS HTTP ${response.status}`);
+            throw new AppError(
+              'E_MODEL_API_FAILED',
+              `TTS HTTP ${response.status} ${response.statusText} speaker=${normalizedVoice} resource=${TTS_RESOURCE_ID} body=${body.slice(0, 500)}`,
+            );
           }
           const chunks: Buffer[] = [];
           for (const line of body.split('\n')) {
@@ -857,7 +882,10 @@ export class VolcengineModelClient implements ModelClient {
               data.code !== 3031 &&
               !data.data
             ) {
-              throw new AppError('E_MODEL_API_FAILED', data.message ?? `TTS code ${data.code}`);
+              throw new AppError(
+                'E_MODEL_API_FAILED',
+                `TTS code ${data.code} speaker=${normalizedVoice} resource=${TTS_RESOURCE_ID}: ${data.message ?? '未知错误'}`,
+              );
             }
           }
           if (chunks.length === 0) {
@@ -954,6 +982,7 @@ export class VolcengineModelClient implements ModelClient {
     outputPath: string,
     durationSec = 10,
     resolution = '720p',
+    ratio = 'adaptive',
     generateAudio = false,
   ): Promise<VideoResult> {
     const credentials = this.credentials;
@@ -976,7 +1005,7 @@ export class VolcengineModelClient implements ModelClient {
                 content,
                 duration: durationSec,
                 resolution,
-                ratio: normalizeSeedanceRatio('adaptive'),
+                ratio,
                 generate_audio: generateAudio,
                 watermark: false,
               }),

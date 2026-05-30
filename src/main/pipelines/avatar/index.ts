@@ -1,9 +1,17 @@
+import { existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 
 import { AppError } from '../../errors.js';
-import { overlayProductImages } from '../../media/ffmpeg.js';
+import { concatVideos, overlayProductImages, transcodeAudioToMp3 } from '../../media/ffmpeg.js';
 import type { AvatarInput } from '../../../shared/types.js';
-import { artifactPath, parseModelJson, readJson, workflowPrompt, writeJson } from '../helpers.js';
+import {
+  artifactPath,
+  parseModelJson,
+  readJson,
+  waitForScriptConfirmation,
+  workflowPrompt,
+  writeJson,
+} from '../helpers.js';
 import type { PipelineDefinition, StepContext } from '../types.js';
 
 interface AvatarValidation {
@@ -27,6 +35,118 @@ interface AvatarScript {
   text: string;
   differentiators: string[];
   timeline: Array<{ sellingPoint: string; atSec: number; productImageIndex: number }>;
+}
+
+interface AvatarAudioSegment {
+  index: number;
+  text: string;
+  durationSec: number;
+  audioPath: string;
+}
+
+interface AvatarVideoSegment {
+  index: number;
+  durationSec: number;
+  audioPath: string;
+  videoPath: string;
+  text: string;
+  lipSyncOffsetMs?: number;
+}
+
+const DIGITAL_HUMAN_MIN_DURATION_SEC = 4;
+const DIGITAL_HUMAN_MAX_DURATION_SEC = 15;
+
+function splitDurationForDigitalHuman(durationSec: number): number[] {
+  const normalizedDuration = Math.max(DIGITAL_HUMAN_MIN_DURATION_SEC, Math.round(durationSec));
+  const chunks: number[] = [];
+  let remaining = normalizedDuration;
+  while (remaining > DIGITAL_HUMAN_MAX_DURATION_SEC) {
+    const remainingAfterMax = remaining - DIGITAL_HUMAN_MAX_DURATION_SEC;
+    const current =
+      remainingAfterMax > 0 && remainingAfterMax < DIGITAL_HUMAN_MIN_DURATION_SEC
+        ? DIGITAL_HUMAN_MAX_DURATION_SEC - (DIGITAL_HUMAN_MIN_DURATION_SEC - remainingAfterMax)
+        : DIGITAL_HUMAN_MAX_DURATION_SEC;
+    chunks.push(current);
+    remaining -= current;
+  }
+  if (remaining > 0) {
+    chunks.push(remaining);
+  }
+  return chunks;
+}
+
+function splitTextIntoSentences(text: string): string[] {
+  const normalized = text.replace(/\s+/gu, ' ').trim();
+  if (normalized.length === 0) {
+    return [];
+  }
+  const matches = normalized.match(/[^。！？!?；;，,]+[。！？!?；;，,]?/gu);
+  return (matches ?? [normalized]).map((item) => item.trim()).filter((item) => item.length > 0);
+}
+
+function splitTextByCharacterCount(text: string, count: number): string[] {
+  const characters = Array.from(text.trim());
+  const chunkSize = Math.ceil(characters.length / count);
+  const chunks: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const chunk = characters.slice(index * chunkSize, (index + 1) * chunkSize).join('').trim();
+    if (chunk.length > 0) {
+      chunks.push(chunk);
+    }
+  }
+  return chunks;
+}
+
+function splitScriptTextForSegments(text: string, segmentCount: number): string[] {
+  if (segmentCount <= 1) {
+    return [text.trim()];
+  }
+  const sentences = splitTextIntoSentences(text);
+  if (sentences.length <= segmentCount) {
+    const characterChunks = splitTextByCharacterCount(text, segmentCount);
+    return characterChunks.length === segmentCount ? characterChunks : sentences;
+  }
+
+  const totalLength = sentences.reduce((total, sentence) => total + sentence.length, 0);
+  const targetLength = Math.max(1, Math.ceil(totalLength / segmentCount));
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const sentence of sentences) {
+    const shouldFlush =
+      chunks.length < segmentCount - 1 &&
+      current.length > 0 &&
+      current.length + sentence.length > targetLength;
+    if (shouldFlush) {
+      chunks.push(current.trim());
+      current = '';
+    }
+    current = `${current}${sentence}`;
+  }
+  if (current.trim().length > 0) {
+    chunks.push(current.trim());
+  }
+
+  while (chunks.length < segmentCount) {
+    if (chunks.length === 0) {
+      break;
+    }
+    const longestIndex = chunks.reduce(
+      (selected, chunk, index) => {
+        const selectedChunk = chunks[selected];
+        return selectedChunk !== undefined && chunk.length > selectedChunk.length ? index : selected;
+      },
+      0,
+    );
+    const [longest] = chunks.splice(longestIndex, 1);
+    if (longest === undefined) {
+      break;
+    }
+    const split = splitTextByCharacterCount(longest, 2);
+    chunks.splice(longestIndex, 0, ...split);
+  }
+
+  return chunks.slice(0, segmentCount);
 }
 
 async function runValidateAvatar(ctx: StepContext<AvatarInput>) {
@@ -110,28 +230,136 @@ async function runScriptGen(ctx: StepContext<AvatarInput>) {
   return { artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'script.json'), script) };
 }
 
+async function runScriptConfirm(ctx: StepContext<AvatarInput>) {
+  return waitForScriptConfirmation(ctx, 'script.json', '数字人口播脚本文案');
+}
+
 async function runTts(ctx: StepContext<AvatarInput>) {
   const script = await readJson<AvatarScript>(artifactPath(ctx.artifactDir, 'script.json'));
-  const audio = await ctx.modelClient.tts(script.text, 'zh_female_vv_uranus_bigtts');
-  await copyFile(audio.localPath, artifactPath(ctx.artifactDir, 'voice.m4a'));
-  return { artifactPath: artifactPath(ctx.artifactDir, 'voice.m4a') };
+  const durations = splitDurationForDigitalHuman(ctx.input.duration);
+  const texts = splitScriptTextForSegments(script.text, durations.length);
+  if (durations.length === 1) {
+    const audio = await ctx.modelClient.tts(texts[0] ?? script.text);
+    await copyFile(audio.localPath, artifactPath(ctx.artifactDir, 'voice.mp3'));
+    return { artifactPath: artifactPath(ctx.artifactDir, 'voice.mp3') };
+  }
+
+  const segments: AvatarAudioSegment[] = [];
+  for (const [index, durationSec] of durations.entries()) {
+    const text = texts[index] ?? texts[texts.length - 1] ?? script.text;
+    const audio = await ctx.modelClient.tts(text);
+    const audioPath = artifactPath(ctx.artifactDir, `voice_part_${index + 1}.mp3`);
+    await copyFile(audio.localPath, audioPath);
+    segments.push({
+      index: index + 1,
+      text,
+      durationSec,
+      audioPath,
+    });
+  }
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'voice_segments.json'), segments),
+    logs: `已按数字人单次生成上限切分为 ${segments.length} 段`,
+  };
+}
+
+async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<AvatarAudioSegment[]> {
+  const segmentPath = artifactPath(ctx.artifactDir, 'voice_segments.json');
+  if (existsSync(segmentPath)) {
+    return readJson<AvatarAudioSegment[]>(segmentPath);
+  }
+
+  const supportedAudioPath = artifactPath(ctx.artifactDir, 'voice.mp3');
+  if (existsSync(supportedAudioPath)) {
+    return [
+      {
+        index: 1,
+        text: '',
+        durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+        audioPath: supportedAudioPath,
+      },
+    ];
+  }
+
+  const legacyAudioPath = artifactPath(ctx.artifactDir, 'voice.m4a');
+  if (existsSync(legacyAudioPath)) {
+    return [
+      {
+        index: 1,
+        text: '',
+        durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+        audioPath: await transcodeAudioToMp3(legacyAudioPath, supportedAudioPath),
+      },
+    ];
+  }
+
+  return [
+    {
+      index: 1,
+      text: '',
+      durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+      audioPath: supportedAudioPath,
+    },
+  ];
 }
 
 async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
-  const result = await ctx.modelClient.generateDigitalHuman({
-    audioPath: artifactPath(ctx.artifactDir, 'voice.m4a'),
-    avatarImagePath: artifactPath(ctx.artifactDir, 'avatar_reference.png'),
-    prompt: workflowPrompt(ctx, 'avatar.seedance_avatar'),
-    durationSec: ctx.input.duration,
-    outputPath: artifactPath(ctx.artifactDir, 'avatar.mp4'),
-  });
-  if (result.lipSyncOffsetMs !== undefined && result.lipSyncOffsetMs > 80) {
+  const audioSegments = await ensureDigitalHumanAudio(ctx);
+  const basePrompt = workflowPrompt(ctx, 'avatar.seedance_avatar');
+  const videoSegments: AvatarVideoSegment[] = [];
+  for (const segment of audioSegments) {
+    const outputPath =
+      audioSegments.length === 1
+        ? artifactPath(ctx.artifactDir, 'avatar.mp4')
+        : artifactPath(ctx.artifactDir, `avatar_part_${segment.index}.mp4`);
+    const segmentPrompt =
+      audioSegments.length === 1
+        ? basePrompt
+        : `${basePrompt}\n当前生成第 ${segment.index}/${audioSegments.length} 段，时长 ${segment.durationSec}s。请保持人物身份、机位、光线、表情节奏与前后段连续。本段口播：${segment.text}`;
+    const result = await ctx.modelClient.generateDigitalHuman({
+      audioPath: segment.audioPath,
+      avatarImagePath: artifactPath(ctx.artifactDir, 'avatar_reference.png'),
+      prompt: segmentPrompt,
+      durationSec: segment.durationSec,
+      outputPath,
+    });
+    videoSegments.push({
+      index: segment.index,
+      durationSec: segment.durationSec,
+      audioPath: segment.audioPath,
+      videoPath: result.localPath,
+      text: segment.text,
+      ...(result.lipSyncOffsetMs !== undefined ? { lipSyncOffsetMs: result.lipSyncOffsetMs } : {}),
+    });
+  }
+
+  if (videoSegments.length > 1) {
+    await concatVideos(
+      videoSegments.map((segment) => segment.videoPath),
+      artifactPath(ctx.artifactDir, 'avatar.mp4'),
+    );
+    await writeJson(artifactPath(ctx.artifactDir, 'avatar_segments.json'), videoSegments);
+  }
+
+  const lipSyncOffsets = videoSegments
+    .map((segment) => segment.lipSyncOffsetMs)
+    .filter((offset): offset is number => offset !== undefined);
+  const maxLipSyncOffset = lipSyncOffsets.length > 0 ? Math.max(...lipSyncOffsets) : undefined;
+  if (maxLipSyncOffset !== undefined && maxLipSyncOffset > 80) {
     return {
-      artifactPath: result.localPath,
-      logs: `唇形同步偏差 ${result.lipSyncOffsetMs}ms，已记录告警`,
+      artifactPath: artifactPath(ctx.artifactDir, 'avatar.mp4'),
+      logs: `已生成 ${videoSegments.length} 段并拼接；最大唇形同步偏差 ${maxLipSyncOffset}ms，已记录告警`,
     };
   }
-  return { artifactPath: result.localPath };
+  return {
+    artifactPath: artifactPath(ctx.artifactDir, 'avatar.mp4'),
+    logs:
+      videoSegments.length > 1
+        ? `已生成 ${videoSegments.length} 段并拼接，单段时长 ${videoSegments
+            .map((segment) => `${segment.durationSec}s`)
+            .join(' + ')}`
+        : undefined,
+  };
 }
 
 async function runOverlay(ctx: StepContext<AvatarInput>) {
@@ -162,6 +390,7 @@ export const avatarPipeline: PipelineDefinition<AvatarInput> = {
     { name: 'product_understand', runStep: runProductUnderstand },
     { name: 'brand_parse', runStep: runBrandParse },
     { name: 'script_gen', runStep: runScriptGen },
+    { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'tts', runStep: runTts },
     { name: 'seedance_avatar', runStep: runSeedanceAvatar },
     { name: 'overlay', runStep: runOverlay },

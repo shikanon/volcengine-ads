@@ -57,6 +57,36 @@ describe('task actions', () => {
     expect(clone?.steps.map((step) => step.status)).toEqual(['pending', 'pending']);
   });
 
+  it('confirms a waiting script step and queues the task', () => {
+    const repository = createRepository();
+    const task = repository.createTask({
+      request: {
+        type: 'explosion',
+        input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 2 },
+      },
+      stepNames: ['rewrite', 'script_confirm', 'seedance'],
+    });
+
+    repository.updateTaskStatus(task.id, 'waiting_confirmation', 66, '爆款裂变脚本文案已生成');
+    repository.updateStepWaitingConfirmation(
+      task.id,
+      'script_confirm',
+      '/tmp/variants.md',
+      '爆款裂变脚本文案已生成',
+    );
+
+    const confirmed = repository.confirmWaitingStep(task.id);
+
+    expect(confirmed?.status).toBe('queued');
+    expect(confirmed?.error).toBeUndefined();
+    expect(confirmed?.steps[1]).toMatchObject({
+      step: 'script_confirm',
+      status: 'success',
+      artifactPath: '/tmp/variants.md',
+      logs: '脚本文案已确认',
+    });
+  });
+
   it('deletes a task record', () => {
     const repository = createRepository();
     const task = repository.createTask({

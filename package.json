@@ -31,6 +31,7 @@
     "test:e2e": "playwright test",
     "build:main": "tsc -p tsconfig.main.json",
     "build": "npm run typecheck && npm run build:main && vite build && electron-builder --dir",
+    "build:release": "npm run typecheck && npm run build:main && vite build && electron-builder",
     "build:all": "npm run typecheck && npm run build:main && vite build && electron-builder -mwl",
     "db:reset": "node scripts/db-reset.mjs"
   },

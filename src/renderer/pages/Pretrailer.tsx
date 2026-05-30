@@ -3,7 +3,11 @@ import { FolderOpenOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
-import type { PretrailerStyle } from '../../shared/types.js';
+import {
+  DEFAULT_PRETRAILER_VIDEO_TYPE,
+  PRETRAILER_VIDEO_TYPE_DEFINITIONS,
+  type PretrailerStyle,
+} from '../../shared/types.js';
 
 interface FormValues {
   sourceVideoPath: string;
@@ -41,7 +45,7 @@ export function Pretrailer() {
           form={form}
           className="desktop-form"
           layout="vertical"
-          initialValues={{ pretrailerDuration: 7, style: 'auto' }}
+          initialValues={{ pretrailerDuration: 7, style: DEFAULT_PRETRAILER_VIDEO_TYPE }}
           onFinish={(values) => void submit(values)}
         >
           <Form.Item label="原广告视频" required>
@@ -61,15 +65,12 @@ export function Pretrailer() {
           <Form.Item name="pretrailerDuration" label="前贴时长">
             <InputNumber min={5} max={10} className="number-input" />
           </Form.Item>
-          <Form.Item name="style" label="风格偏好">
+          <Form.Item name="style" label="广告前贴视频生成类型">
             <Select
-              options={[
-                { value: 'auto', label: '自动推荐' },
-                { value: 'suspense', label: '悬念' },
-                { value: 'contrast', label: '反差' },
-                { value: 'pain', label: '痛点' },
-                { value: 'benefit', label: '福利' },
-              ]}
+              options={PRETRAILER_VIDEO_TYPE_DEFINITIONS.map((definition) => ({
+                value: definition.value,
+                label: definition.label,
+              }))}
             />
           </Form.Item>
           <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} className="primary-action">

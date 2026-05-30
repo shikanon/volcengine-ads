@@ -57,6 +57,32 @@ describe('validateCreateTaskRequest', () => {
     ).toThrow(AppError);
   });
 
+  it('accepts pretrailer video generation type input', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const sourceVideoPath = join(dir, 'source.mp4');
+    writeFileSync(sourceVideoPath, 'video');
+
+    for (const style of ['giant_miniature', 'emotional_amplification'] as const) {
+      expect(
+        validateCreateTaskRequest({
+          type: 'pretrailer',
+          input: {
+            sourceVideoPath,
+            pretrailerDuration: 7,
+            style,
+          },
+        }),
+      ).toEqual({
+        type: 'pretrailer',
+        input: {
+          sourceVideoPath,
+          pretrailerDuration: 7,
+          style,
+        },
+      });
+    }
+  });
+
   it('accepts native industry generation input with an optional reference video', () => {
     const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
     const referenceVideoPath = join(dir, 'reference.mp4');
@@ -102,5 +128,31 @@ describe('validateCreateTaskRequest', () => {
         },
       }),
     ).toThrow(AppError);
+  });
+
+  it('accepts ecommerce native industry generation input', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'native',
+        input: {
+          industry: 'ecommerce',
+          brief: '电商商品信息流短视频，突出商品特写、使用场景、权益刺激和下单转化。',
+          productName: '清洁喷雾',
+          variantCount: 1,
+          durationSec: 30,
+          ratio: '9:16',
+        },
+      }),
+    ).toEqual({
+      type: 'native',
+      input: {
+        industry: 'ecommerce',
+        brief: '电商商品信息流短视频，突出商品特写、使用场景、权益刺激和下单转化。',
+        productName: '清洁喷雾',
+        variantCount: 1,
+        durationSec: 30,
+        ratio: '9:16',
+      },
+    });
   });
 });

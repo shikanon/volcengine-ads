@@ -14,6 +14,9 @@ import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
 export interface StepResult {
   artifactPath?: string;
   logs?: string;
+  awaitingConfirmation?: {
+    message: string;
+  };
 }
 
 export interface StepContext<TInput = ExplosionInput | PretrailerInput | AvatarInput | NativeInput> {

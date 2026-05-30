@@ -5,7 +5,7 @@ export interface ModelClient {
   generateVideo(req: SeedanceVideoRequest): Promise<VideoResult>;
   generateDigitalHuman(req: SeedanceAvatarRequest): Promise<VideoResult>;
   asr(audioPath: string): Promise<TranscriptResult>;
-  tts(text: string, voice: string): Promise<AudioResult>;
+  tts(text: string, voice?: string): Promise<AudioResult>;
   chat(messages: ChatMessage[], opts?: ChatOptions): Promise<string>;
   vision(images: string[], prompt: string): Promise<string>;
   visionVideo(videoPath: string, prompt: string): Promise<string>;
@@ -24,6 +24,7 @@ export interface SeedanceVideoRequest {
   prompt: string;
   durationSec?: number;
   resolution?: string;
+  ratio?: string;
   generateAudio?: boolean;
   outputPath: string;
 }

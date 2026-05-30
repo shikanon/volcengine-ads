@@ -229,10 +229,19 @@ export function Workflows() {
   const [selectedNodeId, setSelectedNodeId] = useState<string>('script_parse');
   const [selectedPromptId, setSelectedPromptId] = useState<WorkflowPromptId>('explosion.script_parse');
   const [draft, setDraft] = useState('');
+  const [isCompactFlow, setIsCompactFlow] = useState(false);
 
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 640px)');
+    const syncCompactFlow = () => setIsCompactFlow(query.matches);
+    syncCompactFlow();
+    query.addEventListener('change', syncCompactFlow);
+    return () => query.removeEventListener('change', syncCompactFlow);
+  }, []);
 
   const workflow = WORKFLOW_DEFINITIONS[workflowType];
   const selectedNode = useMemo(() => {
@@ -248,6 +257,10 @@ export function Workflows() {
     [selectedNode.id, workflow.nodes],
   );
   const flowEdges = useMemo(() => buildWorkflowEdges(workflow.nodes), [workflow.nodes]);
+  const defaultViewport = useMemo(
+    () => (isCompactFlow ? { x: 14, y: 58, zoom: 0.56 } : { x: 34, y: 54, zoom: 0.88 }),
+    [isCompactFlow],
+  );
   const selectedStage = getWorkflowNodeStage(
     selectedNode,
     workflow.nodes.findIndex((node) => node.id === selectedNode.id),
@@ -335,11 +348,11 @@ export function Workflows() {
 
           <div className="workflow-flow-frame">
             <ReactFlow<WorkflowFlowNode, WorkflowFlowEdge>
-              key={workflowType}
+              key={`${workflowType}-${isCompactFlow ? 'compact' : 'wide'}`}
               nodes={flowNodes}
               edges={flowEdges}
               nodeTypes={NODE_TYPES}
-              defaultViewport={{ x: 34, y: 54, zoom: 0.88 }}
+              defaultViewport={defaultViewport}
               minZoom={0.5}
               maxZoom={1.35}
               nodesConnectable={false}

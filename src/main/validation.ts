@@ -1,6 +1,10 @@
 import { existsSync } from 'node:fs';
 
 import { AppError } from './errors.js';
+import {
+  PRETRAILER_VIDEO_TYPE_DEFINITIONS,
+  normalizePretrailerStyle,
+} from '../shared/types.js';
 import type {
   AvatarInput,
   CreateTaskRequest,
@@ -9,7 +13,6 @@ import type {
   NativeInput,
   NativeRatio,
   PretrailerInput,
-  PretrailerStyle,
 } from '../shared/types.js';
 
 const NATIVE_INDUSTRIES: readonly NativeIndustry[] = [
@@ -18,16 +21,9 @@ const NATIVE_INDUSTRIES: readonly NativeIndustry[] = [
   'novel',
   'social',
   'tool',
+  'ecommerce',
 ];
 const NATIVE_RATIOS: readonly NativeRatio[] = ['9:16', '16:9', '1:1'];
-const PRETRAILER_STYLES: readonly PretrailerStyle[] = [
-  'auto',
-  'suspense',
-  'contrast',
-  'pain',
-  'benefit',
-];
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -84,10 +80,13 @@ function validatePretrailer(input: unknown): PretrailerInput {
     throw new AppError('E_INPUT_VALIDATION', '前贴时长必须在 5..10 秒');
   }
   const style = input.style;
-  if (typeof style !== 'string' || !PRETRAILER_STYLES.includes(style as PretrailerStyle)) {
-    throw new AppError('E_INPUT_VALIDATION', '前贴风格不支持');
+  if (
+    typeof style !== 'string' ||
+    !PRETRAILER_VIDEO_TYPE_DEFINITIONS.some((definition) => definition.value === style)
+  ) {
+    throw new AppError('E_INPUT_VALIDATION', '广告前贴视频生成类型不支持');
   }
-  return { sourceVideoPath, pretrailerDuration, style: style as PretrailerStyle };
+  return { sourceVideoPath, pretrailerDuration, style: normalizePretrailerStyle(style) };
 }
 
 function validateAvatar(input: unknown): AvatarInput {

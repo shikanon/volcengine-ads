@@ -25,7 +25,7 @@ const WORKFLOW_LAUNCHERS = [
     icon: <RocketOutlined />,
     title: '原生爆款素材',
     description: '按行业 brief 生成概念、脚本、素材和成片。',
-    meta: '五行业模板',
+    meta: '六行业模板',
   },
   {
     key: 'pretrailer',
@@ -49,14 +49,18 @@ export function Home({ onNavigate }: HomeProps) {
   const running = tasks.filter((task) => task.status === 'running').length;
   const success = tasks.filter((task) => task.status === 'success').length;
   const queued = tasks.filter((task) => task.status === 'queued').length;
-  const needsAttention = tasks.filter((task) => task.status === 'paused' || task.status === 'failed').length;
+  const needsAttention = tasks.filter(
+    (task) => task.status === 'paused' || task.status === 'failed' || task.status === 'waiting_confirmation',
+  ).length;
 
   const filteredTasks = useMemo(() => {
     if (queueFilter === 'all') {
       return tasks;
     }
     if (queueFilter === 'needs_attention') {
-      return tasks.filter((task) => task.status === 'paused' || task.status === 'failed');
+      return tasks.filter(
+        (task) => task.status === 'paused' || task.status === 'failed' || task.status === 'waiting_confirmation',
+      );
     }
     return tasks.filter((task) => task.status === queueFilter);
   }, [queueFilter, tasks]);

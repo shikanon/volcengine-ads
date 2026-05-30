@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { getStepNames } from '../../src/main/pipelines/index.js';
 import {
+  AD_CREATIVE_STRUCTURE_PROMPT,
+  AD_MATERIAL_QUALITY_PROMPT,
+  SEEDANCE_DIRECTOR_PROMPT,
   VIDEO_COMPOSITION_PROMPT,
   VIDEO_TEXT_STICKER_PROMPT,
   getDefaultWorkflowPrompts,
@@ -15,6 +18,7 @@ describe('pipeline step contracts', () => {
       'asr',
       'script_parse',
       'rewrite',
+      'script_confirm',
       'seedance',
       'audio_replace',
     ]);
@@ -24,9 +28,9 @@ describe('pipeline step contracts', () => {
     expect(getStepNames('pretrailer')).toEqual([
       'ingest',
       'understand',
-      'keyframe_pick',
       'copy_gen',
       'script_gen',
+      'script_confirm',
       'seedance',
       'tts',
       'mux_pretrailer',
@@ -40,6 +44,7 @@ describe('pipeline step contracts', () => {
       'product_understand',
       'brand_parse',
       'script_gen',
+      'script_confirm',
       'tts',
       'seedance_avatar',
       'overlay',
@@ -52,6 +57,7 @@ describe('pipeline step contracts', () => {
       'industry_router',
       'concept_planner',
       'script_writer',
+      'script_confirm',
       'storyboard_builder',
       'compliance_pre',
       'asset_generator',
@@ -77,6 +83,51 @@ describe('pipeline step contracts', () => {
     }
   });
 
+  it('keeps ad creative and Seedance director guidance in generation prompts', () => {
+    const prompts = getDefaultWorkflowPrompts();
+    const creativePromptIds: WorkflowPromptId[] = [
+      'explosion.script_parse',
+      'explosion.rewrite',
+      'explosion.seedance',
+      'pretrailer.copy_gen',
+      'pretrailer.script_gen',
+      'pretrailer.seedance',
+      'native.concept_plan',
+      'native.script_writer',
+      'native.storyboard_builder',
+      'native.asset_generator',
+    ];
+    const seedancePromptIds: WorkflowPromptId[] = [
+      'explosion.script_parse',
+      'explosion.rewrite',
+      'explosion.seedance',
+      'pretrailer.script_gen',
+      'pretrailer.seedance',
+      'native.storyboard_builder',
+      'native.asset_generator',
+    ];
+    const qualityPromptIds: WorkflowPromptId[] = [
+      'explosion.rewrite',
+      'explosion.seedance',
+      'pretrailer.copy_gen',
+      'pretrailer.script_gen',
+      'pretrailer.seedance',
+      'native.concept_plan',
+      'native.storyboard_builder',
+      'native.asset_generator',
+    ];
+
+    for (const id of creativePromptIds) {
+      expect(prompts[id]).toContain(AD_CREATIVE_STRUCTURE_PROMPT);
+    }
+    for (const id of seedancePromptIds) {
+      expect(prompts[id]).toContain(SEEDANCE_DIRECTOR_PROMPT);
+    }
+    for (const id of qualityPromptIds) {
+      expect(prompts[id]).toContain(AD_MATERIAL_QUALITY_PROMPT);
+    }
+  });
+
   it('keeps text sticker guidance out of native video generation', () => {
     const prompts = getDefaultWorkflowPrompts();
     const nativeVideoPromptIds: WorkflowPromptId[] = [
@@ -87,5 +138,12 @@ describe('pipeline step contracts', () => {
     for (const id of nativeVideoPromptIds) {
       expect(prompts[id]).toContain(VIDEO_TEXT_STICKER_PROMPT);
     }
+  });
+
+  it('keeps video understanding prompts on full-video input instead of keyframes', () => {
+    const prompts = getDefaultWorkflowPrompts();
+    expect(prompts['explosion.script_parse']).toContain('直接观看完整广告视频');
+    expect(prompts['pretrailer.understand']).toContain('直接观看完整广告视频');
+    expect(prompts['pretrailer.understand']).toContain('禁止把视频抽帧成图片');
   });
 });

@@ -47,7 +47,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
 const PAGE_SUBTITLES: Record<PageKey, string> = {
   home: '本地任务队列',
   explosion: '链接到批量素材',
-  native: '五行业工作流生成',
+  native: '六行业工作流生成',
   pretrailer: '原片到开场钩子',
   avatar: '品牌资料到口播视频',
   workflows: '节点逻辑与 Prompt 调试',
@@ -95,16 +95,16 @@ export function App() {
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: 'oklch(0.48 0.08 168)',
-          colorInfo: 'oklch(0.52 0.085 238)',
-          colorSuccess: 'oklch(0.47 0.075 150)',
-          colorWarning: 'oklch(0.56 0.105 84)',
-          colorError: 'oklch(0.54 0.13 28)',
-          colorText: 'oklch(0.32 0.012 170)',
-          colorTextSecondary: 'oklch(0.52 0.012 170)',
-          colorBgBase: 'oklch(0.965 0.006 170)',
-          colorBgContainer: 'oklch(0.998 0.002 170)',
-          colorBorder: 'oklch(0.875 0.012 170)',
+          colorPrimary: 'oklch(0.78 0.15 205)',
+          colorInfo: 'oklch(0.72 0.18 276)',
+          colorSuccess: 'oklch(0.76 0.14 164)',
+          colorWarning: 'oklch(0.82 0.13 88)',
+          colorError: 'oklch(0.72 0.18 18)',
+          colorText: 'oklch(0.93 0.018 240)',
+          colorTextSecondary: 'oklch(0.73 0.045 242)',
+          colorBgBase: 'oklch(0.16 0.045 255)',
+          colorBgContainer: 'oklch(0.22 0.052 252)',
+          colorBorder: 'oklch(0.39 0.075 235)',
           borderRadius: 8,
           fontSize: 15,
           fontFamily:

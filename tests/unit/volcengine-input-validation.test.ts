@@ -16,8 +16,7 @@ vi.mock('undici', () => ({
 function credentials(): RuntimeCredentials {
   return {
     llmApiKey: 'llm-key',
-    ttsAppId: 'tts-app',
-    ttsToken: 'tts-token',
+    ttsApiKey: 'tts-api-key',
     asrApiKey: 'asr-key',
     provider: {
       seedanceBaseUrl: 'https://ark.invalid',
@@ -27,7 +26,7 @@ function credentials(): RuntimeCredentials {
       llmBaseUrl: 'https://ark.invalid',
       llmModel: 'doubao-seed-2-0-pro-260215',
       ttsBaseUrl: 'https://speech.invalid',
-      ttsVoice: 'voice',
+      ttsVoice: 'zh_female_vv_uranus_bigtts',
       asrBaseUrl: 'https://openspeech.invalid',
       asrResourceId: 'volc.seedasr.auc',
       ossEndpoint: '',
@@ -64,7 +63,14 @@ describe('VolcengineModelClient input validation', () => {
 
   it('rejects overlong TTS text before the network request', async () => {
     await expect(
-      new VolcengineModelClient(credentials()).tts('测'.repeat(1001), 'voice'),
+      new VolcengineModelClient(credentials()).tts('测'.repeat(1001), 'zh_female_vv_uranus_bigtts'),
+    ).rejects.toThrow(AppError);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported TTS speakers before the network request', async () => {
+    await expect(
+      new VolcengineModelClient(credentials()).tts('语音合成测试', 'unknown-speaker'),
     ).rejects.toThrow(AppError);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
@@ -81,10 +87,18 @@ describe('VolcengineModelClient input validation', () => {
         ].join('\n'),
     } as never);
 
-    const result = await new VolcengineModelClient(credentials()).tts('语音合成测试', 'voice');
+    const result = await new VolcengineModelClient(credentials()).tts('语音合成测试');
 
     expect(existsSync(result.localPath)).toBe(true);
     expect(readFileSync(result.localPath).toString()).toBe('voice-audio');
+    const init = vi.mocked(fetch).mock.calls[0]?.[1] as
+      | { headers?: Record<string, string>; body?: string }
+      | undefined;
+    expect(init?.headers?.['X-Api-Key']).toBe('tts-api-key');
+    expect(init?.headers?.['X-Api-Resource-Id']).toBe('seed-tts-2.0');
+    expect(JSON.parse(init?.body ?? '{}')).toMatchObject({
+      req_params: { speaker: 'zh_female_vv_uranus_bigtts' },
+    });
   });
 
   it('rejects unsupported ASR local audio extensions before upload', async () => {

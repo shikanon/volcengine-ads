@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { App, Button, Empty, Modal, Popconfirm, Progress, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import {
+  CheckCircleOutlined,
   CopyOutlined,
   DeleteOutlined,
   ExportOutlined,
@@ -28,6 +29,7 @@ const TASK_STATUS_LABEL: Record<TaskRecord['status'], string> = {
   failed: '失败',
   paused: '暂停',
   canceled: '取消',
+  waiting_confirmation: '待确认',
 };
 
 const STEP_STATUS_LABEL: Record<StepStatus, string> = {
@@ -37,24 +39,25 @@ const STEP_STATUS_LABEL: Record<StepStatus, string> = {
   failed: '失败',
   skipped: '跳过',
   canceled: '取消',
+  waiting_confirmation: '待确认',
 };
 
 const STEP_LABELS: Record<TaskType, Record<string, string>> = {
   explosion: {
     download: '素材导入',
-    frames: '关键帧抽取',
     asr: '语音识别',
     script_parse: '脚本解析',
     rewrite: '裂变改写',
+    script_confirm: '脚本文案确认',
     seedance: '视频生成',
     audio_replace: '音频替换',
   },
   pretrailer: {
     ingest: '素材导入',
     understand: '视频理解',
-    keyframe_pick: '关键帧选择',
     copy_gen: '前贴文案',
     script_gen: '口播脚本',
+    script_confirm: '脚本文案确认',
     seedance: '前贴生成',
     tts: '语音合成',
     mux_pretrailer: '前贴合成',
@@ -65,6 +68,7 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     product_understand: '商品理解',
     brand_parse: '品牌解析',
     script_gen: '口播脚本',
+    script_confirm: '脚本文案确认',
     tts: '语音合成',
     seedance_avatar: '数字人生成',
     overlay: '素材叠加',
@@ -74,6 +78,7 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     industry_router: '行业路由',
     concept_planner: '概念规划',
     script_writer: '脚本生成',
+    script_confirm: '脚本文案确认',
     storyboard_builder: '分镜构建',
     compliance_pre: '前置合规',
     asset_generator: '素材生成',
@@ -135,6 +140,14 @@ function extractLogPath(logs?: string): string | undefined {
   return /日志文件：([^\n]+)/u.exec(logs ?? '')?.[1]?.trim();
 }
 
+function extractCodexDiagnosisPath(logs?: string): string | undefined {
+  return /Codex诊断文件：([^\n]+)/u.exec(logs ?? '')?.[1]?.trim();
+}
+
+function formatTaskInput(task: TaskRecord): string {
+  return JSON.stringify(task.input, null, 2);
+}
+
 function TaskStatusCell({ task }: { task: TaskRecord }) {
   return (
     <div className="task-status-cell">
@@ -153,6 +166,7 @@ function StepOutput({ step }: { step: TaskStep }) {
   const [preview, setPreview] = useState<ArtifactPreview>();
   const [previewLoading, setPreviewLoading] = useState(false);
   const logPath = extractLogPath(step.logs);
+  const codexDiagnosisPath = extractCodexDiagnosisPath(step.logs);
 
   if (!step.artifactPath && !step.logs) {
     return <span className="muted-text">等待输出</span>;
@@ -215,6 +229,18 @@ function StepOutput({ step }: { step: TaskStep }) {
     }
   };
 
+  const revealCodexDiagnosis = async () => {
+    if (!codexDiagnosisPath) {
+      return;
+    }
+    try {
+      await api.asset.reveal({ path: codexDiagnosisPath });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    }
+  };
+
   const previewLog = async () => {
     if (!logPath) {
       return;
@@ -222,6 +248,27 @@ function StepOutput({ step }: { step: TaskStep }) {
     setPreviewLoading(true);
     try {
       const result = await api.asset.readText({ path: logPath, maxBytes: 1024 * 1024 });
+      setPreview({
+        path: result.path,
+        title: getFileName(result.path),
+        content: result.content,
+        truncated: result.truncated,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void message.error(detail);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const previewCodexDiagnosis = async () => {
+    if (!codexDiagnosisPath) {
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const result = await api.asset.readText({ path: codexDiagnosisPath, maxBytes: 1024 * 1024 });
       setPreview({
         path: result.path,
         title: getFileName(result.path),
@@ -315,6 +362,29 @@ function StepOutput({ step }: { step: TaskStep }) {
           </Tooltip>
         </Space>
       ) : null}
+      {codexDiagnosisPath ? (
+        <Space size={8} wrap>
+          <Tooltip title="查看 Codex 诊断">
+            <Button
+              size="small"
+              className="secondary-button icon-button"
+              icon={<EyeOutlined />}
+              aria-label="查看 Codex 诊断"
+              loading={previewLoading}
+              onClick={() => void previewCodexDiagnosis()}
+            />
+          </Tooltip>
+          <Tooltip title="定位 Codex 诊断文件">
+            <Button
+              size="small"
+              className="secondary-button icon-button"
+              icon={<FolderOpenOutlined />}
+              aria-label="定位 Codex 诊断文件"
+              onClick={() => void revealCodexDiagnosis()}
+            />
+          </Tooltip>
+        </Space>
+      ) : null}
       <Modal
         title={preview?.title ?? '节点输出'}
         open={preview !== undefined}
@@ -359,6 +429,13 @@ function WorkflowSteps({ task, onRetryStep }: { task: TaskRecord; onRetryStep(st
       <div className="workflow-heading">
         <Typography.Text strong>中间过程输出节点</Typography.Text>
         <span>默认隐藏，展开任务后查看每一步的状态、产物和日志。</span>
+      </div>
+      <div className="workflow-input">
+        <div className="workflow-input-heading">
+          <Typography.Text strong>工作流输入</Typography.Text>
+          <Typography.Text>{TASK_TYPE_LABEL[task.type]}</Typography.Text>
+        </div>
+        <pre>{formatTaskInput(task)}</pre>
       </div>
       <Table<StepRow>
         rowKey="id"
@@ -425,7 +502,7 @@ function WorkflowSteps({ task, onRetryStep }: { task: TaskRecord; onRetryStep(st
 
 export function TaskTable({ tasks, pageSize = 8, emptyDescription = '暂无任务' }: TaskTableProps) {
   const { message } = App.useApp();
-  const { retryTask, retryStep, cancelTask, deleteTask, cloneTask } = useTasksStore();
+  const { retryTask, retryStep, confirmScript, cancelTask, deleteTask, cloneTask } = useTasksStore();
 
   const runTaskAction = async (action: () => Promise<void>, successText: string) => {
     try {
@@ -484,6 +561,7 @@ export function TaskTable({ tasks, pageSize = 8, emptyDescription = '暂无任�
           render: (_, record) => {
             const canRetry =
               record.status === 'paused' || record.status === 'failed' || record.status === 'canceled';
+            const canConfirm = record.status === 'waiting_confirmation';
             const canCancel = record.status === 'queued' || record.status === 'running';
             const canDelete = record.status !== 'running';
 
@@ -497,6 +575,19 @@ export function TaskTable({ tasks, pageSize = 8, emptyDescription = '暂无任�
                       icon={<ReloadOutlined />}
                       aria-label="重新执行任务"
                       onClick={() => void runTaskAction(() => retryTask(record.id), '任务已重新入队')}
+                    />
+                  </Tooltip>
+                ) : null}
+                {canConfirm ? (
+                  <Tooltip title="确认脚本文案并继续">
+                    <Button
+                      size="small"
+                      className="secondary-button icon-button"
+                      icon={<CheckCircleOutlined />}
+                      aria-label="确认脚本文案并继续"
+                      onClick={() =>
+                        void runTaskAction(() => confirmScript(record.id), '脚本文案已确认')
+                      }
                     />
                   </Tooltip>
                 ) : null}

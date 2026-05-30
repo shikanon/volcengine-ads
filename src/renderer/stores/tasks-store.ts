@@ -10,6 +10,7 @@ interface TasksState {
   createTask(request: CreateTaskRequest): Promise<TaskRecord>;
   retryTask(taskId: string): Promise<void>;
   retryStep(taskId: string, stepId: string): Promise<void>;
+  confirmScript(taskId: string): Promise<void>;
   cancelTask(taskId: string): Promise<void>;
   deleteTask(taskId: string): Promise<void>;
   cloneTask(taskId: string): Promise<void>;
@@ -25,6 +26,9 @@ function stepStatusFromProgress(task: TaskRecord, step: TaskStep, stepName: stri
   }
   if (event.status === 'canceled') {
     return 'canceled';
+  }
+  if (event.status === 'waiting_confirmation') {
+    return 'waiting_confirmation';
   }
   if (event.status === 'paused' || event.status === 'failed') {
     return 'failed';
@@ -72,6 +76,10 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   },
   async retryStep(taskId, stepId) {
     await api.task.retryStep({ taskId, stepId });
+    await get().loadTasks();
+  },
+  async confirmScript(taskId) {
+    await api.task.confirmScript({ taskId });
     await get().loadTasks();
   },
   async cancelTask(taskId) {

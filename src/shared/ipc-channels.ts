@@ -4,6 +4,7 @@ export const IPC_CHANNELS = {
     list: 'task:list',
     retry: 'task:retry',
     retryStep: 'task:retry-step',
+    confirmScript: 'task:confirm-script',
     cancel: 'task:cancel',
     delete: 'task:delete',
     clone: 'task:clone',

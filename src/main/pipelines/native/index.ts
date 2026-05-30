@@ -12,6 +12,7 @@ import {
   artifactPath,
   parseModelJson,
   readJson,
+  waitForScriptConfirmation,
   workflowPrompt,
   writeJson,
   writeText,
@@ -241,7 +242,7 @@ function storyboardPromptText(variant: StoryboardVariant): string {
 function storyboardSegmentPromptText(segment: StoryboardSegment, segmentCount: number): string {
   const prefix =
     segmentCount > 1
-      ? `当前只生成第 ${segment.index}/${segmentCount} 段，片段时长 ${segment.durationSec}s。请与前后片段保持主体、机位、光线、色彩和节奏连续。\n`
+      ? `当前只生成第 ${segment.index}/${segmentCount} 段，片段时长 ${segment.durationSec}s。请与前后片段保持主体、机位、光线、色彩和节奏连续。如本次输入参考视频，请明确参考该视频的主体位置、动作节奏和运镜连续性。\n`
       : '';
   return `${prefix}${segment.shots
     .map(
@@ -436,7 +437,7 @@ async function runIndustryRouter(ctx: StepContext<NativeInput>) {
 async function runConceptPlanner(ctx: StepContext<NativeInput>) {
   const route = await readJson<IndustryRoute>(artifactPath(ctx.artifactDir, 'industry.json'));
   const response = await ctx.modelClient.chat([
-    { role: 'system', content: '你是五行业短视频广告策略规划师，只输出合法 JSON。' },
+    { role: 'system', content: '你是多行业短视频广告策略规划师，只输出合法 JSON。' },
     {
       role: 'user',
       content: workflowPrompt(ctx, 'native.concept_plan', {
@@ -478,6 +479,10 @@ async function runScriptWriter(ctx: StepContext<NativeInput>) {
     scripts.scripts.map((script) => `## ${script.title}\n\n${script.script}`).join('\n\n'),
   );
   return { artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'scripts.json'), scripts) };
+}
+
+async function runScriptConfirm(ctx: StepContext<NativeInput>) {
+  return waitForScriptConfirmation(ctx, 'scripts.md', '原生爆款素材脚本文案');
 }
 
 async function runStoryboardBuilder(ctx: StepContext<NativeInput>) {
@@ -653,6 +658,7 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             }),
             durationSec: segment.durationSec,
             resolution: ctx.input.ratio === '16:9' ? '1080p' : '720p',
+            ratio: ctx.input.ratio,
             generateAudio: !shouldMuxVoiceover,
             outputPath: segmentPath,
             ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
@@ -714,6 +720,7 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                 prompt: videoRequest.prompt,
                 durationSec: videoRequest.durationSec,
                 resolution: videoRequest.resolution,
+                ratio: videoRequest.ratio,
                 generateAudio: videoRequest.generateAudio,
                 outputPath: videoRequest.outputPath,
               });
@@ -885,7 +892,7 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             variantIndex: variant.index,
             textLength: voiceover.length,
           });
-          const audio = await ctx.modelClient.tts(voiceover, 'zh_female_vv_uranus_bigtts');
+          const audio = await ctx.modelClient.tts(voiceover);
           await ctx.appendLog?.('info', '素材口播音频生成成功', {
             variantIndex: variant.index,
             audioPath: audio.localPath,
@@ -1092,6 +1099,7 @@ export const nativePipeline: PipelineDefinition<NativeInput> = {
     { name: 'industry_router', runStep: runIndustryRouter },
     { name: 'concept_planner', runStep: runConceptPlanner },
     { name: 'script_writer', runStep: runScriptWriter },
+    { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'storyboard_builder', runStep: runStoryboardBuilder },
     { name: 'compliance_pre', runStep: runCompliancePre },
     { name: 'asset_generator', runStep: runAssetGenerator },

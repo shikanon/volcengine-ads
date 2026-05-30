@@ -57,6 +57,14 @@ const nativeIndustries = {
     blacklistWords: [],
     forbiddenScenes: [],
   },
+  ecommerce: {
+    title: '电商',
+    formula: '场景痛点 + 商品卖点 + 证据背书 + 权益刺激 + CTA',
+    requiredModules: ['商品特写', '使用场景', '卖点对比', '促销权益'],
+    complianceFocus: '价格真实性、促销规则、功效承诺、品牌授权',
+    blacklistWords: [],
+    forbiddenScenes: [],
+  },
 };
 
 function setEnvIfMissing(name, value) {
@@ -100,6 +108,19 @@ async function loadLocalEnvFile() {
 function normalizeTtsVoice(voice) {
   return voice === 'volcano_tts' ? 'zh_female_vv_uranus_bigtts' : voice;
 }
+
+const SUPPORTED_TTS_SPEAKERS = [
+  'zh_female_vv_uranus_bigtts',
+  'saturn_zh_female_cancan_tob',
+  'saturn_zh_female_keainvsheng_tob',
+  'saturn_zh_female_tiaopigongzhu_tob',
+  'saturn_zh_male_shuanglangshaonian_tob',
+  'saturn_zh_male_tiancaitongzhuo_tob',
+  'zh_female_xiaohe_uranus_bigtts',
+  'zh_male_m191_uranus_bigtts',
+  'zh_male_taocheng_uranus_bigtts',
+  'en_male_tim_uranus_bigtts',
+];
 
 function decryptSetting(payload, secret) {
   const parsed = JSON.parse(payload);
@@ -162,6 +183,7 @@ async function loadAppSettingsEnv() {
     seedanceApiKey: 'VIDEO_API_KEY',
     imageApiKey: 'IMAGE_API_KEY',
     llmApiKey: 'LLM_API_KEY',
+    ttsApiKey: 'VOLC_TTS_API_KEY',
     ttsAppId: 'VOLC_TTS_APPID',
     ttsToken: 'VOLC_TTS_TOKEN',
     asrAppId: 'VOLC_ASR_APPID',
@@ -423,19 +445,26 @@ async function arkChatJson(messages, label, temperature = 0) {
   return JSON.parse(content);
 }
 
-async function synthesizeTts(text, outputName = 'tts-smoke.mp3') {
-  const appId = required('VOLC_TTS_APPID');
-  const token = required('VOLC_TTS_TOKEN');
+async function synthesizeTts(text, outputName = 'tts-smoke.mp3', speakerOverride) {
+  const apiKey = process.env.VOLC_TTS_API_KEY;
+  const appId = process.env.VOLC_TTS_APPID;
+  const token = process.env.VOLC_TTS_TOKEN;
+  if (!apiKey && (!appId || !token)) {
+    throw new Error('缺少环境变量 VOLC_TTS_API_KEY 或 VOLC_TTS_APPID/VOLC_TTS_TOKEN');
+  }
   const baseUrl = optional('VOLC_TTS_BASE_URL', 'https://openspeech.bytedance.com');
-  const speaker = normalizeTtsVoice(optional('VOLC_TTS_VOICE_ID', 'zh_female_vv_uranus_bigtts'));
+  const speaker = normalizeTtsVoice(
+    speakerOverride || optional('VOLC_TTS_VOICE_ID', 'zh_female_vv_uranus_bigtts'),
+  );
   const response = await fetchWithTimeout(
     `${baseUrl.replace(/\/$/, '')}/api/v3/tts/unidirectional`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-App-Id': appId,
-        'X-Api-Access-Key': token,
+        ...(apiKey
+          ? { 'X-Api-Key': apiKey }
+          : { 'X-Api-App-Id': appId, 'X-Api-Access-Key': token }),
         'X-Api-Resource-Id': 'seed-tts-2.0',
       },
       body: JSON.stringify({
@@ -478,6 +507,20 @@ async function smokeTts() {
   const outputPath = await synthesizeTts('火山语音合成连通性测试。');
   console.log('Volc TTS smoke passed');
   return outputPath;
+}
+
+async function smokeTtsSpeakers() {
+  for (const speaker of SUPPORTED_TTS_SPEAKERS) {
+    const text = speaker.startsWith('en_')
+      ? `Volcano text to speech speaker ${speaker} connectivity test.`
+      : `火山语音合成音色 ${speaker} 连通性测试。`;
+    await synthesizeTts(
+      text,
+      `tts-${speaker}.mp3`,
+      speaker,
+    );
+    console.log(`Volc TTS speaker smoke passed: ${speaker}`);
+  }
 }
 
 async function generateSeedreamImage({ outputName, prompt, referenceColor = [80, 140, 220, 255] }) {
@@ -734,7 +777,7 @@ async function runNativeIndustrySmoke(industryKey, referenceVideoPath, reference
   ].join('\n');
   const concept = await arkChatJson(
     [
-      { role: 'system', content: '你是五行业广告策略规划师，只输出合法 JSON。' },
+      { role: 'system', content: '你是多行业广告策略规划师，只输出合法 JSON。' },
       {
         role: 'user',
         content: `按行业公式生成一条原生爆款广告概念。行业：${industry.title}。公式：${industry.formula}。必备模块：${industry.requiredModules.join('、')}。合规重点：${industry.complianceFocus}。不得在输出中出现这些字面表达：${[...industry.blacklistWords, ...industry.forbiddenScenes].join('、') || '无'}。创意简报：${brief}。只输出 JSON：{"title":"...","hook":"...","audience":"...","sellingPoints":["..."],"modules":["..."],"cta":"...","tone":"..."}`,
@@ -1372,6 +1415,8 @@ try {
     await smokeArkChat();
   } else if (target === 'tts') {
     await smokeTts();
+  } else if (target === 'tts-speakers') {
+    await smokeTtsSpeakers();
   } else if (target === 'image') {
     await smokeSeedreamImage();
   } else if (target === 'video') {

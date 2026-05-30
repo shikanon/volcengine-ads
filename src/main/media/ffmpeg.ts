@@ -73,6 +73,17 @@ export async function extractAudio(inputPath: string, outputPath: string): Promi
   return outputPath;
 }
 
+export async function transcodeAudioToMp3(inputPath: string, outputPath: string): Promise<string> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  await run(
+    ffmpeg(inputPath)
+      .noVideo()
+      .outputOptions(['-c:a libmp3lame', '-ar 24000', '-ac 1'])
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
 export async function extractFrames(inputPath: string, outputDir: string): Promise<string> {
   await mkdir(outputDir, { recursive: true });
   await run(ffmpeg(inputPath).outputOptions(['-vf fps=1']).output(`${outputDir}/frame_%04d.jpg`));
@@ -95,17 +106,58 @@ export async function muxAudioVideo(videoPath: string, audioPath: string, output
   return replaceAudio(videoPath, audioPath, outputPath);
 }
 
-export async function concatWithFade(firstPath: string, secondPath: string, outputPath: string): Promise<string> {
+interface ConcatWithFadeOptions {
+  fadeDurationSec?: number;
+  firstDurationSec?: number;
+}
+
+function normalizeFadeDuration(durationSec: number | undefined): number {
+  if (durationSec === undefined || !Number.isFinite(durationSec)) {
+    return 0.4;
+  }
+  return Math.min(Math.max(durationSec, 0.1), 2);
+}
+
+function fadeOffset(firstDurationSec: number | undefined, fadeDurationSec: number): number {
+  if (firstDurationSec === undefined || !Number.isFinite(firstDurationSec)) {
+    return 0;
+  }
+  return Math.max(0, firstDurationSec - fadeDurationSec);
+}
+
+export async function concatWithFade(
+  firstPath: string,
+  secondPath: string,
+  outputPath: string,
+  options: ConcatWithFadeOptions = {},
+): Promise<string> {
   await mkdir(dirname(outputPath), { recursive: true });
+  const fadeDurationSec = normalizeFadeDuration(options.fadeDurationSec);
+  const offsetSec = fadeOffset(options.firstDurationSec, fadeDurationSec);
   await run(
     ffmpeg()
       .input(firstPath)
       .input(secondPath)
       .complexFilter([
-        '[0:v][1:v]xfade=transition=fade:duration=0.4:offset=0[v]',
-        '[0:a][1:a]acrossfade=d=0.4[a]',
+        '[0:v]fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[v0base]',
+        '[1:v]fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[v1base]',
+        '[v0base][v1base]scale2ref=w=main_w:h=main_h[v0scaled][v1ref]',
+        '[v0scaled]settb=AVTB,setpts=PTS-STARTPTS[v0]',
+        '[v1ref]settb=AVTB,setpts=PTS-STARTPTS[v1]',
+        `[v0][v1]xfade=transition=fade:duration=${fadeDurationSec}:offset=${offsetSec},format=yuv420p[v]`,
+        '[0:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a0]',
+        '[1:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a1]',
+        `[a0][a1]acrossfade=d=${fadeDurationSec}[a]`,
       ])
-      .outputOptions(['-map [v]', '-map [a]', '-c:v libx264', '-c:a aac', '-movflags +faststart'])
+      .outputOptions([
+        '-map [v]',
+        '-map [a]',
+        '-c:v libx264',
+        '-c:a aac',
+        '-r 30',
+        '-pix_fmt yuv420p',
+        '-movflags +faststart',
+      ])
       .output(outputPath),
   );
   return outputPath;
