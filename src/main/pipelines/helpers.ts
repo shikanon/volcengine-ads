@@ -26,6 +26,36 @@ export function artifactPath(artifactDir: string, name: string): string {
   return join(artifactDir, name);
 }
 
+export const SEEDANCE_MIN_GENERATION_DURATION_SEC = 4;
+export const SEEDANCE_MAX_GENERATION_DURATION_SEC = 15;
+
+export function normalizeSeedanceGenerationDuration(durationSec: number | undefined, fallback = 10): number {
+  const value = durationSec === undefined || !Number.isFinite(durationSec) ? fallback : durationSec;
+  return Math.min(
+    SEEDANCE_MAX_GENERATION_DURATION_SEC,
+    Math.max(SEEDANCE_MIN_GENERATION_DURATION_SEC, Math.round(value)),
+  );
+}
+
+export function splitDurationForSeedanceGeneration(durationSec: number): number[] {
+  const chunks: number[] = [];
+  let remaining = Math.max(SEEDANCE_MIN_GENERATION_DURATION_SEC, Math.round(durationSec));
+  while (remaining > SEEDANCE_MAX_GENERATION_DURATION_SEC) {
+    const remainingAfterMax = remaining - SEEDANCE_MAX_GENERATION_DURATION_SEC;
+    const current =
+      remainingAfterMax > 0 && remainingAfterMax < SEEDANCE_MIN_GENERATION_DURATION_SEC
+        ? SEEDANCE_MAX_GENERATION_DURATION_SEC -
+          (SEEDANCE_MIN_GENERATION_DURATION_SEC - remainingAfterMax)
+        : SEEDANCE_MAX_GENERATION_DURATION_SEC;
+    chunks.push(current);
+    remaining -= current;
+  }
+  if (remaining > 0) {
+    chunks.push(normalizeSeedanceGenerationDuration(remaining));
+  }
+  return chunks;
+}
+
 export interface ReferencePolicyInput {
   hasReferenceVideo?: boolean;
   hasReferenceImages?: boolean;

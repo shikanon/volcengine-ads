@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { App, Button, Empty, Modal, Popconfirm, Progress, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import {
   CheckCircleOutlined,
@@ -49,6 +49,7 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     script_parse: '脚本解析',
     rewrite: '裂变改写',
     script_confirm: '脚本文案确认',
+    video_prompt_optimize: '视频提示词优化',
     seedance: '视频生成',
     audio_replace: '音频替换',
   },
@@ -58,6 +59,7 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     copy_gen: '前贴文案',
     script_gen: '口播脚本',
     script_confirm: '脚本文案确认',
+    video_prompt_optimize: '视频提示词优化',
     seedance: '前贴生成',
     tts: '语音合成',
     mux_pretrailer: '前贴合成',
@@ -70,6 +72,7 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     script_gen: '口播脚本',
     script_confirm: '脚本文案确认',
     tts: '语音合成',
+    video_prompt_optimize: '视频提示词优化',
     seedance_avatar: '数字人生成',
     overlay: '素材叠加',
     postprocess: '成片处理',
@@ -81,6 +84,7 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     script_confirm: '脚本文案确认',
     storyboard_builder: '分镜构建',
     compliance_pre: '前置合规',
+    video_prompt_optimize: '视频提示词优化',
     asset_generator: '素材生成',
     consistency_checker: '一致性检测',
     composer: '成片入库',
@@ -146,6 +150,13 @@ function extractCodexDiagnosisPath(logs?: string): string | undefined {
 
 function formatTaskInput(task: TaskRecord): string {
   return JSON.stringify(task.input, null, 2);
+}
+
+function findWaitingScriptStep(task: TaskRecord): TaskStep | undefined {
+  return (
+    task.steps.find((step) => step.step === 'script_confirm' && step.status === 'waiting_confirmation') ??
+    task.steps.find((step) => step.status === 'waiting_confirmation')
+  );
 }
 
 function TaskStatusCell({ task }: { task: TaskRecord }) {
@@ -417,8 +428,118 @@ function StepOutput({ step }: { step: TaskStep }) {
   );
 }
 
-function WorkflowSteps({ task, onRetryStep }: { task: TaskRecord; onRetryStep(stepId: string): void }) {
+function ScriptConfirmationPanel({
+  task,
+  step,
+  onConfirm,
+}: {
+  task: TaskRecord;
+  step: TaskStep;
+  onConfirm(): Promise<void>;
+}) {
+  const { message } = App.useApp();
+  const [content, setContent] = useState<string>();
+  const [truncated, setTruncated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setContent(undefined);
+    setTruncated(false);
+    if (!step.artifactPath || !isPreviewable(step.artifactPath)) {
+      return () => {
+        alive = false;
+      };
+    }
+
+    setLoading(true);
+    void api.asset
+      .readText({ path: step.artifactPath, maxBytes: 1024 * 1024 })
+      .then((result) => {
+        if (!alive) {
+          return;
+        }
+        setContent(result.content);
+        setTruncated(result.truncated);
+      })
+      .catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        void message.error(detail);
+      })
+      .finally(() => {
+        if (alive) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [message, step.artifactPath]);
+
+  const confirm = async () => {
+    setConfirming(true);
+    try {
+      await onConfirm();
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  return (
+    <div className="script-confirm-panel">
+      <div className="script-confirm-header">
+        <div>
+          <Typography.Text strong>脚本文案待确认</Typography.Text>
+          <span>
+            {TASK_TYPE_LABEL[task.type]} · {getStepLabel(task.type, step.step)}
+          </span>
+        </div>
+        <Button
+          type="primary"
+          icon={<CheckCircleOutlined />}
+          loading={confirming}
+          onClick={() => void confirm()}
+        >
+          确认脚本文案并继续
+        </Button>
+      </div>
+      {step.logs ? <Typography.Text className="step-log">{step.logs}</Typography.Text> : null}
+      {step.artifactPath ? (
+        <Typography.Text className="artifact-preview-path" ellipsis={{ tooltip: step.artifactPath }}>
+          {step.artifactPath}
+        </Typography.Text>
+      ) : null}
+      {loading ? (
+        <div className="script-preview-empty">正在读取脚本文案...</div>
+      ) : content ? (
+        <>
+          {truncated ? (
+            <Typography.Text className="artifact-preview-note">
+              文件较大，仅展示前 1MB 内容。
+            </Typography.Text>
+          ) : null}
+          <pre className="script-confirm-preview">{content}</pre>
+        </>
+      ) : (
+        <div className="script-preview-empty">脚本文案产物尚未写入或不可预览。</div>
+      )}
+    </div>
+  );
+}
+
+function WorkflowSteps({
+  task,
+  onRetryStep,
+  onConfirmScript,
+}: {
+  task: TaskRecord;
+  onRetryStep(stepId: string): void;
+  onConfirmScript(): Promise<void>;
+}) {
   const rows: StepRow[] = task.steps.map((step, index) => ({ ...step, index: index + 1 }));
+  const waitingScriptStep = task.status === 'waiting_confirmation' ? findWaitingScriptStep(task) : undefined;
 
   if (rows.length === 0) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无节点" />;
@@ -430,6 +551,9 @@ function WorkflowSteps({ task, onRetryStep }: { task: TaskRecord; onRetryStep(st
         <Typography.Text strong>中间过程输出节点</Typography.Text>
         <span>默认隐藏，展开任务后查看每一步的状态、产物和日志。</span>
       </div>
+      {waitingScriptStep ? (
+        <ScriptConfirmationPanel task={task} step={waitingScriptStep} onConfirm={onConfirmScript} />
+      ) : null}
       <div className="workflow-input">
         <div className="workflow-input-heading">
           <Typography.Text strong>工作流输入</Typography.Text>
@@ -530,6 +654,7 @@ export function TaskTable({ tasks, pageSize = 8, emptyDescription = '暂无任�
             onRetryStep={(stepId) => {
               void retryStep(record.id, stepId);
             }}
+            onConfirmScript={() => runTaskAction(() => confirmScript(record.id), '脚本文案已确认')}
           />
         ),
       }}

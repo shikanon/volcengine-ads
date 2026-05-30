@@ -3,13 +3,15 @@ import { copyFile } from 'node:fs/promises';
 
 import { AppError } from '../../errors.js';
 import { concatVideos, overlayProductImages, transcodeAudioToMp3 } from '../../media/ffmpeg.js';
-import type { AvatarInput } from '../../../shared/types.js';
+import { DEFAULT_VIDEO_RESOLUTION, type AvatarInput } from '../../../shared/types.js';
 import {
   artifactPath,
   buildReferencePolicyText,
   buildSeedancePromptCard,
+  normalizeSeedanceGenerationDuration,
   parseModelJson,
   readJson,
+  splitDurationForSeedanceGeneration,
   waitForScriptConfirmation,
   workflowPrompt,
   writeJson,
@@ -78,26 +80,8 @@ interface AvatarVideoPrompts {
   basePrompt: string;
 }
 
-const DIGITAL_HUMAN_MIN_DURATION_SEC = 4;
-const DIGITAL_HUMAN_MAX_DURATION_SEC = 15;
-
 function splitDurationForDigitalHuman(durationSec: number): number[] {
-  const normalizedDuration = Math.max(DIGITAL_HUMAN_MIN_DURATION_SEC, Math.round(durationSec));
-  const chunks: number[] = [];
-  let remaining = normalizedDuration;
-  while (remaining > DIGITAL_HUMAN_MAX_DURATION_SEC) {
-    const remainingAfterMax = remaining - DIGITAL_HUMAN_MAX_DURATION_SEC;
-    const current =
-      remainingAfterMax > 0 && remainingAfterMax < DIGITAL_HUMAN_MIN_DURATION_SEC
-        ? DIGITAL_HUMAN_MAX_DURATION_SEC - (DIGITAL_HUMAN_MIN_DURATION_SEC - remainingAfterMax)
-        : DIGITAL_HUMAN_MAX_DURATION_SEC;
-    chunks.push(current);
-    remaining -= current;
-  }
-  if (remaining > 0) {
-    chunks.push(remaining);
-  }
-  return chunks;
+  return splitDurationForSeedanceGeneration(durationSec);
 }
 
 function splitTextIntoSentences(text: string): string[] {
@@ -300,7 +284,7 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
       {
         index: 1,
         text: '',
-        durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+        durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
         audioPath: supportedAudioPath,
       },
     ];
@@ -312,7 +296,7 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
       {
         index: 1,
         text: '',
-        durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+        durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
         audioPath: await transcodeAudioToMp3(legacyAudioPath, supportedAudioPath),
       },
     ];
@@ -322,7 +306,7 @@ async function ensureDigitalHumanAudio(ctx: StepContext<AvatarInput>): Promise<A
     {
       index: 1,
       text: '',
-      durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+      durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
       audioPath: supportedAudioPath,
     },
   ];
@@ -338,7 +322,7 @@ async function buildAvatarBasePrompt(ctx: StepContext<AvatarInput>): Promise<str
   });
   return `${workflowPrompt(ctx, 'avatar.seedance_avatar')}\n${buildSeedancePromptCard({
     outputGoal: '转化型数字人口播广告',
-    durationSec: Math.min(ctx.input.duration, DIGITAL_HUMAN_MAX_DURATION_SEC),
+    durationSec: normalizeSeedanceGenerationDuration(ctx.input.duration),
     visualAnchor: `参考数字人形象；产品图数量 ${ctx.input.productImagePaths.length}`,
     behaviorState: script?.avatarSceneType ?? 'single_talking',
     localTone: '可信、自然、清晰、轻微手势，眼神稳定看向镜头',
@@ -381,6 +365,8 @@ async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
       avatarImagePath: artifactPath(ctx.artifactDir, 'avatar_reference.png'),
       prompt: segmentPrompt,
       durationSec: segment.durationSec,
+      resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
+      generateAudio: true,
       outputPath,
     });
     videoSegments.push({

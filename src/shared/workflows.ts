@@ -95,6 +95,9 @@ export const SEEDANCE_PROMPT_CARD_PROMPT =
 export const AD_QUALITY_RUBRIC_PROMPT =
   '质量 Rubric：首秒停留、广告信息清晰度、画面完成度、参考一致性、差异化/首发潜力、合规安全性都要可判断；若质检失败，repairPrompt 必须能直接用于二次生成。';
 
+export const SEEDANCE_SINGLE_CALL_DURATION_PROMPT =
+  'Seedance 单次生成时长约束：所有会作为视频生成接口 durationSec 的片段必须在 4-15 秒；不足 4 秒的镜头必须合并到相邻片段，超过 15 秒的镜头必须拆成多个连续片段，禁止输出 1-3 秒或超过 15 秒的生成片段。';
+
 export const WORKFLOW_PROMPT_DEFINITIONS = {
   'explosion.script_parse': {
     title: '脚本解析',
@@ -108,13 +111,13 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '生成新脚本并拆成可用于视频生成的分镜。',
     variables: ['variantCount', 'ctaKeywords', 'transcriptText', 'scriptParseJson'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}基于原视频理解、原文案与分镜裂变 {variantCount} 条。${AD_CREATIVE_STRUCTURE_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}${REFERENCE_POLICY_PROMPT}先生成完整新脚本，再把脚本拆成可用于视频生成的 storyboard。每条变体必须复用原片高转化结构，但更换钩子、场景或利益点表达，避免同质化。每个 visualPrompt 必须写成 Seedance 友好的视觉锚点、行为状态、局部调性和广告目的，不要堆叠低价值摄影参数。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}必须保留 CTA 关键词：{ctaKeywords}\n只输出 JSON 数组，每项包含 {"index":1,"strategy":"shot_replace|avatar_replace|product_shot_replace|pretrailer_add|hot_opening_reuse|remix","copy":"...","script":"...","preserve":["结构/节奏/转化触发点"],"replace":["非核心画面/人物/场景/利益点表达"],"differenceTarget":"画面差异目标","variantReason":"该变体的差异化理由","storyboard":[{"index":1,"durationSec":4,"visualPrompt":"...","narration":"...","transition":"...","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"..."}]}。\n原文案：{transcriptText}\n原片拆解：{scriptParseJson}`,
+      `${PRIVATE_REASONING_PROMPT}基于原视频理解、原文案与分镜裂变 {variantCount} 条。${AD_CREATIVE_STRUCTURE_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}${REFERENCE_POLICY_PROMPT}${SEEDANCE_SINGLE_CALL_DURATION_PROMPT}先生成完整新脚本，再把脚本拆成可用于视频生成的 storyboard。每条变体必须复用原片高转化结构，但更换钩子、场景或利益点表达，避免同质化。每个 visualPrompt 必须写成 Seedance 友好的视觉锚点、行为状态、局部调性和广告目的，不要堆叠低价值摄影参数。每个分镜如有口播或对白，必须把可 TTS 合成的文本写入 narration；同时按声音匹配输出 voiceGender:"male|female"，男声用于男性角色/男声旁白，女声用于女性角色/女声旁白；无口播则 narration 为空。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}必须保留 CTA 关键词：{ctaKeywords}\n只输出 JSON 数组，每项包含 {"index":1,"strategy":"shot_replace|avatar_replace|product_shot_replace|pretrailer_add|hot_opening_reuse|remix","copy":"...","script":"...","preserve":["结构/节奏/转化触发点"],"replace":["非核心画面/人物/场景/利益点表达"],"differenceTarget":"画面差异目标","variantReason":"该变体的差异化理由","storyboard":[{"index":1,"durationSec":4,"visualPrompt":"...","narration":"可 TTS 合成的口播或对白，没有则为空","voiceGender":"male|female","transition":"...","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"..."}]}。\n原文案：{transcriptText}\n原片拆解：{scriptParseJson}`,
   },
   'explosion.seedance': {
     title: '视频生成',
     description: '把裂变脚本和分镜组装成 Seedance 视频生成 Prompt。',
     variables: ['copy', 'script', 'storyboard', 'referencePolicy'],
-    defaultPrompt: `${SEEDANCE_VC_ROUTER_PROMPT}${SEEDANCE_PROMPT_CARD_PROMPT}\n裂变文案：{copy}\n\n完整脚本：{script}\n\n按以下分镜生成视频：\n{storyboard}\n\n参考素材使用方式：{referencePolicy}\n\n${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}`,
+    defaultPrompt: `${SEEDANCE_VC_ROUTER_PROMPT}${SEEDANCE_PROMPT_CARD_PROMPT}\n裂变文案：{copy}\n\n完整脚本：{script}\n\n按以下分镜生成视频：\n{storyboard}\n\n参考素材使用方式：{referencePolicy}\n\n若请求中包含 reference_audio，则该音频是本分镜口播/对白的硬约束，画面动作、口型、情绪和节奏必须贴合音频；不要在画面内生成字幕、花字或额外可读文字来替代口播。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}`,
   },
   'pretrailer.understand': {
     title: '视频理解',
@@ -135,7 +138,7 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '把前贴文案拆成短镜头脚本。',
     variables: ['pretrailerDuration', 'copyText', 'understandingJson'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}为 {pretrailerDuration}s 广告前贴生成分镜。首镜头必须 <=1 秒，并承担停留钩子。${AD_CREATIVE_STRUCTURE_PROMPT}${PRETRAILER_CREATIVE_STRATEGY_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}每个镜头 prompt 必须写清楚产品、场景、人物、动作、色调、光线质感、情绪、前后景层次和节奏，并自然继承原片理解中的视觉元素；不使用原片关键帧作为生成参考。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}文案：{copyText}。原片理解：{understandingJson}。只输出 JSON：{"firstSecondVisual":"0-1s 视觉钩子","transitionPlan":"前贴如何接原片","endingFramePrompt":"末帧衔接描述","shots":[{"index":1,"durationSec":1,"prompt":"...","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"..."}]}。`,
+      `${PRIVATE_REASONING_PROMPT}为 {pretrailerDuration}s 广告前贴生成分镜。后续视频生成接口单次 durationSec 使用 {pretrailerDuration}s，必须保持在 4-15 秒范围内；shots.durationSec 仅表达镜头节奏，首镜头必须 <=1 秒，并承担停留钩子。${AD_CREATIVE_STRUCTURE_PROMPT}${PRETRAILER_CREATIVE_STRATEGY_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}每个镜头 prompt 必须写清楚产品、场景、人物、动作、色调、光线质感、情绪、前后景层次和节奏，并自然继承原片理解中的视觉元素；不使用原片关键帧作为生成参考。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}文案：{copyText}。原片理解：{understandingJson}。只输出 JSON：{"firstSecondVisual":"0-1s 视觉钩子","transitionPlan":"前贴如何接原片","endingFramePrompt":"末帧衔接描述","shots":[{"index":1,"durationSec":1,"prompt":"...","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"..."}]}。`,
   },
   'pretrailer.seedance': {
     title: '前贴生成',
@@ -175,7 +178,7 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '生成数字人口播文案和产品露出时间轴。',
     variables: ['duration', 'brandJson', 'productJson', 'productImageCount'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}生成 {duration}s 转化型数字人口播脚本，短句化、可 TTS、自然停顿，至少 2 个产品差异化卖点，并规避禁用承诺。可内部比较痛点设问、福利利益、对比反差、轻剧情四类方向，正文只输出最终 JSON：{"text":"完整口播","hookType":"pain_question|benefit|contrast|micro_story","differentiators":["...","..."],"ttsNotes":"语速、停顿、情绪","avatarSceneType":"single_talking|product_overlay|picture_in_picture|desk_demo","timeline":[{"sellingPoint":"...","atSec":4,"productImageIndex":0,"visualAction":"产品如何露出"}],"riskControl":"..."}。品牌：{brandJson}。产品：{productJson}。产品图数量：{productImageCount}`,
+      `${PRIVATE_REASONING_PROMPT}生成 {duration}s 转化型数字人口播脚本，短句化、可 TTS、自然停顿，至少 2 个产品差异化卖点，并规避禁用承诺。数字人生成节点会把长口播按 4-15 秒单次调用范围切分，请让语义断句自然可切分，不要设计成必须单次超过 15 秒才能成立的连续动作。可内部比较痛点设问、福利利益、对比反差、轻剧情四类方向，正文只输出最终 JSON：{"text":"完整口播","hookType":"pain_question|benefit|contrast|micro_story","differentiators":["...","..."],"ttsNotes":"语速、停顿、情绪","avatarSceneType":"single_talking|product_overlay|picture_in_picture|desk_demo","timeline":[{"sellingPoint":"...","atSec":4,"productImageIndex":0,"visualAction":"产品如何露出"}],"riskControl":"..."}。品牌：{brandJson}。产品：{productJson}。产品图数量：{productImageCount}`,
   },
   'avatar.seedance_avatar': {
     title: '数字人生成',
@@ -195,14 +198,14 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '把创意方案写成可投放广告脚本。',
     variables: ['industryTitle', 'brief', 'conceptsJson', 'durationSec'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}基于{industryTitle}行业策略，把概念写成 {durationSec}s 原生广告脚本。${AD_CREATIVE_STRUCTURE_PROMPT}若总时长超过 15s，请按 Seedance 可生成片段规划节奏，每段 4-15s，例如 25s 拆为 15s + 10s。口播要短句化、可配音、避免堆砌形容词，CTA 自然但明确；证据点必须来自输入或合理使用场景，不编造不可证明承诺。创意简报：{brief}。概念：{conceptsJson}。只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整口播/字幕脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","hookType":"pain|benefit|conflict|spectacle|story","riskControl":"...","beats":[{"timeSec":0,"text":"首秒钩子"},{"timeSec":3,"text":"卖点或证据"}]}]}。`,
+      `${PRIVATE_REASONING_PROMPT}基于{industryTitle}行业策略，把概念写成 {durationSec}s 原生广告脚本。${AD_CREATIVE_STRUCTURE_PROMPT}${SEEDANCE_SINGLE_CALL_DURATION_PROMPT}若总时长超过 15s，请按 Seedance 可生成片段规划节奏，每段 4-15s，例如 25s 拆为 15s + 10s。口播要短句化、可配音、避免堆砌形容词，CTA 自然但明确；证据点必须来自输入或合理使用场景，不编造不可证明承诺。创意简报：{brief}。概念：{conceptsJson}。只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整口播/字幕脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","hookType":"pain|benefit|conflict|spectacle|story","riskControl":"...","beats":[{"timeSec":0,"text":"首秒钩子"},{"timeSec":3,"text":"卖点或证据"}]}]}。`,
   },
   'native.storyboard_builder': {
     title: '分镜构建',
     description: '把脚本拆成视频生成可用分镜。',
     variables: ['industryTitle', 'ratio', 'scriptsJson', 'durationSec'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}把{industryTitle}广告脚本拆成适合 Seedance 生成的分镜，视频比例 {ratio}，总时长约 {durationSec}s。若总时长超过 15s，请拆为多个连续片段，每段 4-15s，例如 25s 拆为 15s + 10s，并让 shots 的 durationSec 累计接近总时长。${SEEDANCE_VC_ROUTER_PROMPT}每个 videoPrompt 必须写清楚视觉锚点、行为状态、局部调性和广告目的，避免低价值摄影参数堆叠。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}${VIDEO_TEXT_STICKER_PROMPT}首镜头承担首秒钩子，后续镜头按痛点/爽点、卖点证据、CTA 推进。脚本：{scriptsJson}。只输出 JSON：{"variants":[{"index":1,"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":3,"shotType":"ai_pretrailer|digital_human|product_demo|atmosphere|cta","imagePrompt":"场景图提示词，包含主体、环境、光线、构图和质感","videoPrompt":"视频镜头提示词，不包含文字贴纸、花字、字幕或任何可读文字","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"...","referencePolicy":"...","voiceoverText":"对应口播文本，仅供节奏参考","module":"行业必备模块"}]}]}。`,
+      `${PRIVATE_REASONING_PROMPT}把{industryTitle}广告脚本拆成适合 Seedance 生成的分镜，视频比例 {ratio}，总时长约 {durationSec}s。${SEEDANCE_SINGLE_CALL_DURATION_PROMPT}若总时长超过 15s，请拆为多个连续片段，每段 4-15s，例如 25s 拆为 15s + 10s，并让 shots 的 durationSec 累计接近总时长。${SEEDANCE_VC_ROUTER_PROMPT}每个 videoPrompt 必须写清楚视觉锚点、行为状态、局部调性和广告目的，避免低价值摄影参数堆叠。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}${VIDEO_TEXT_STICKER_PROMPT}首镜头承担首秒钩子，后续镜头按痛点/爽点、卖点证据、CTA 推进。脚本：{scriptsJson}。只输出 JSON：{"variants":[{"index":1,"title":"...","script":"...","voiceover":"...","shots":[{"index":1,"durationSec":4,"shotType":"ai_pretrailer|digital_human|product_demo|atmosphere|cta","imagePrompt":"场景图提示词，包含主体、环境、光线、构图和质感","videoPrompt":"视频镜头提示词，不包含文字贴纸、花字、字幕或任何可读文字","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"...","referencePolicy":"...","voiceoverText":"对应口播文本，仅供节奏参考","module":"行业必备模块"}]}]}。`,
   },
   'native.compliance_rewrite': {
     title: '合规改写',

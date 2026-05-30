@@ -4,20 +4,30 @@ import { copyFile } from 'node:fs/promises';
 import { AppError } from '../../errors.js';
 import { downloadDouyinVideo } from '../../media/douyin.js';
 import {
+  concatAudioSegments,
+  concatSilentVideos,
   concatVideos,
   extractAudio,
   normalizeVideo,
   replaceAudio,
+  trimAudio,
   trimVideo,
 } from '../../media/ffmpeg.js';
 import type { SeedanceVideoRequest, TranscriptResult } from '../../model-client/index.js';
-import type { ExplosionInput } from '../../../shared/types.js';
+import {
+  DEFAULT_VIDEO_RESOLUTION,
+  type ExplosionInput,
+  type TtsSpeaker,
+} from '../../../shared/types.js';
 import {
   artifactPath,
   buildReferencePolicyText,
   buildSeedancePromptCard,
+  normalizeSeedanceGenerationDuration,
   parseModelJson,
   readJson,
+  SEEDANCE_MAX_GENERATION_DURATION_SEC,
+  splitDurationForSeedanceGeneration,
   waitForScriptConfirmation,
   workflowPrompt,
   writeJson,
@@ -30,6 +40,13 @@ interface StoryboardShot {
   durationSec?: number;
   visualPrompt: string;
   narration?: string;
+  dialogue?: string;
+  voiceover?: string;
+  voiceoverText?: string;
+  spokenText?: string;
+  speaker?: string;
+  voiceGender?: ExplosionVoiceGender;
+  speakerGender?: ExplosionVoiceGender;
   transition?: string;
   visualAnchor?: string;
   behaviorState?: string;
@@ -85,12 +102,16 @@ interface GeneratedVideoSegment {
   durationSec: number;
   usedReferenceVideo: boolean;
   referenceVideoPath?: string;
+  audioPath?: string;
+  voiceoverText?: string;
+  voiceGender?: ExplosionVoiceGender;
+  voiceSpeaker?: TtsSpeaker;
 }
 
 interface FinalVideoOutput {
   index: number;
   path: string;
-  audioSource: 'source_audio' | 'seedance';
+  audioSource: 'source_audio' | 'seedance' | 'tts_seedance';
 }
 
 interface ExplosionVideoPromptSegment {
@@ -98,6 +119,10 @@ interface ExplosionVideoPromptSegment {
   durationSec: number;
   prompt: string;
   noReferencePrompt: string;
+  voiceoverText?: string;
+  voiceGender?: ExplosionVoiceGender;
+  voiceSpeaker?: TtsSpeaker;
+  audioPath?: string;
 }
 
 interface ExplosionVideoPromptVariant {
@@ -109,14 +134,18 @@ interface ExplosionVideoPrompts {
   variants: ExplosionVideoPromptVariant[];
 }
 
+type ExplosionVoiceGender = 'female' | 'male';
+
 function isReferenceVideoRejected(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /InputVideoSensitiveContentDetected|real person|reference_video|video duration|video pixel/iu.test(message);
 }
 
-const SEEDANCE_MIN_DURATION_SEC = 4;
-const SEEDANCE_MAX_DURATION_SEC = 15;
 const DEFAULT_SHOT_DURATION_SEC = 2;
+const EXPLOSION_TTS_SPEAKERS: Record<ExplosionVoiceGender, TtsSpeaker> = {
+  female: 'zh_female_vv_uranus_bigtts',
+  male: 'zh_male_m191_uranus_bigtts',
+};
 
 function isEmptyTranscript(transcript: TranscriptResult): boolean {
   return transcript.text.trim().length === 0 && transcript.segments.length === 0;
@@ -135,11 +164,58 @@ function normalizeShotDuration(shot: StoryboardShot): number {
   return Math.max(1, Math.round(shot.durationSec));
 }
 
-function normalizeSeedanceDuration(durationSec: number): number {
-  return Math.min(
-    SEEDANCE_MAX_DURATION_SEC,
-    Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(durationSec)),
-  );
+function spokenTextForShot(shot: StoryboardShot): string {
+  return (
+    shot.voiceoverText ??
+    shot.voiceover ??
+    shot.dialogue ??
+    shot.spokenText ??
+    shot.narration ??
+    ''
+  ).trim();
+}
+
+function buildSegmentVoiceoverText(shots: StoryboardShot[]): string | undefined {
+  const text = shots
+    .map((shot) => spokenTextForShot(shot))
+    .filter((item) => item.length > 0)
+    .join(' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function normalizeVoiceGender(value: unknown): ExplosionVoiceGender | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (/^(male|man|男|男声|男性|男生)$/u.test(normalized)) {
+    return 'male';
+  }
+  if (/^(female|woman|女|女声|女性|女生)$/u.test(normalized)) {
+    return 'female';
+  }
+  return undefined;
+}
+
+function inferVoiceGender(shots: StoryboardShot[]): ExplosionVoiceGender {
+  for (const shot of shots) {
+    const explicit = normalizeVoiceGender(shot.voiceGender ?? shot.speakerGender ?? shot.speaker);
+    if (explicit !== undefined) {
+      return explicit;
+    }
+  }
+  const voiceText = shots
+    .map((shot) => `${spokenTextForShot(shot)} ${shot.visualPrompt}`)
+    .join(' ');
+  if (/男声|男生|男性|爸爸|父亲|哥哥|叔叔|爷爷|老公|先生|兄弟/u.test(voiceText)) {
+    return 'male';
+  }
+  if (/女声|女生|女性|妈妈|母亲|姐姐|阿姨|奶奶|老婆|女士|姐妹/u.test(voiceText)) {
+    return 'female';
+  }
+  return 'female';
 }
 
 interface StoryboardSegment {
@@ -149,24 +225,19 @@ interface StoryboardSegment {
 }
 
 function splitLongShot(shot: StoryboardShot, durationSec: number): StoryboardShot[] {
-  if (durationSec <= SEEDANCE_MAX_DURATION_SEC) {
-    return [{ ...shot, durationSec }];
-  }
-  const parts: StoryboardShot[] = [];
-  let remaining = durationSec;
-  let partIndex = 1;
-  while (remaining > 0) {
-    const partDuration = Math.min(SEEDANCE_MAX_DURATION_SEC, remaining);
-    parts.push({
+  const durations = splitDurationForSeedanceGeneration(durationSec);
+  return durations.map((partDuration, index) => {
+    const partIndex = index + 1;
+    return {
       ...shot,
-      index: Number(`${shot.index}${partIndex}`),
+      index: index === 0 ? shot.index : Number(`${shot.index}${partIndex}`),
       durationSec: partDuration,
-      visualPrompt: `${shot.visualPrompt}（延续镜头 ${shot.index} 的第 ${partIndex} 段，保持动作和构图连续。）`,
-    });
-    remaining -= partDuration;
-    partIndex += 1;
-  }
-  return parts;
+      visualPrompt:
+        index === 0
+          ? shot.visualPrompt
+          : `${shot.visualPrompt}（延续镜头 ${shot.index} 的第 ${partIndex} 段，保持动作和构图连续。）`,
+    };
+  });
 }
 
 function splitStoryboardForSeedance(storyboard: StoryboardShot[]): StoryboardSegment[] {
@@ -181,7 +252,7 @@ function splitStoryboardForSeedance(storyboard: StoryboardShot[]): StoryboardSeg
     segments.push({
       index: segments.length + 1,
       shots: currentShots,
-      durationSec: normalizeSeedanceDuration(currentDuration),
+      durationSec: normalizeSeedanceGenerationDuration(currentDuration),
     });
     currentShots = [];
     currentDuration = 0;
@@ -193,7 +264,7 @@ function splitStoryboardForSeedance(storyboard: StoryboardShot[]): StoryboardSeg
       const partDuration = normalizeShotDuration(shotPart);
       if (
         currentShots.length > 0 &&
-        currentDuration + partDuration > SEEDANCE_MAX_DURATION_SEC
+        currentDuration + partDuration > SEEDANCE_MAX_GENERATION_DURATION_SEC
       ) {
         flushCurrent();
       }
@@ -225,7 +296,9 @@ function buildStoryboardPrompt(
   return buildSeedancePromptCard({
     outputGoal: '广告爆款裂变，保留高转化结构并生成差异化画面',
     ratio: '9:16',
-    durationSec: shots.reduce((total, shot) => total + normalizeShotDuration(shot), 0),
+    durationSec: normalizeSeedanceGenerationDuration(
+      shots.reduce((total, shot) => total + normalizeShotDuration(shot), 0),
+    ),
     visualAnchor: shots.map((shot) => shot.visualAnchor ?? shot.visualPrompt).join('；'),
     behaviorState: shots.map((shot) => shot.behaviorState ?? shot.visualPrompt).join('；'),
     localTone: shots.map((shot) => shot.localTone ?? shot.transition ?? '节奏紧凑，情绪服务首秒停留和转化').join('；'),
@@ -361,6 +434,40 @@ async function runScriptConfirm(ctx: StepContext<ExplosionInput>) {
   return waitForScriptConfirmation(ctx, 'variants.md', '爆款裂变脚本文案');
 }
 
+async function synthesizeSegmentVoiceover(
+  ctx: StepContext<ExplosionInput>,
+  variantIndex: number,
+  segment: StoryboardSegment,
+): Promise<
+  Pick<ExplosionVideoPromptSegment, 'audioPath' | 'voiceGender' | 'voiceSpeaker' | 'voiceoverText'>
+> {
+  const voiceoverText = buildSegmentVoiceoverText(segment.shots);
+  if (voiceoverText === undefined) {
+    return {};
+  }
+  if (voiceoverText.length > 1000) {
+    throw new AppError('E_INPUT_VALIDATION', '爆款裂变分镜口播文本不能超过 1000 字符');
+  }
+  const voiceGender = inferVoiceGender(segment.shots);
+  const voiceSpeaker = EXPLOSION_TTS_SPEAKERS[voiceGender];
+  const rawAudio = await ctx.modelClient.tts(voiceoverText, voiceSpeaker);
+  const audioPath = artifactPath(
+    ctx.artifactDir,
+    `variant_${variantIndex}_segment_${segment.index}_voice.mp3`,
+  );
+  await trimAudio(rawAudio.localPath, audioPath, segment.durationSec);
+  await ctx.appendLog?.('info', '爆款裂变分镜口播音频生成成功', {
+    variantIndex,
+    segmentIndex: segment.index,
+    durationSec: segment.durationSec,
+    voiceGender,
+    voiceSpeaker,
+    audioPath,
+    textLength: voiceoverText.length,
+  });
+  return { audioPath, voiceGender, voiceSpeaker, voiceoverText };
+}
+
 async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
   const variants = await readJson<Variant[]>(artifactPath(ctx.artifactDir, 'variants.json'));
   const scriptParsePath = artifactPath(ctx.artifactDir, 'script_parse.json');
@@ -371,7 +478,8 @@ async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
 
   for (const variant of variants) {
     const segments = splitStoryboardForSeedance(variant.storyboard);
-    const promptSegments = segments.map((segment) => {
+    const promptSegments: ExplosionVideoPromptSegment[] = [];
+    for (const segment of segments) {
       const referencePolicy = buildReferencePolicyText({
         hasReferenceVideo: true,
         purpose: scriptParse?.referencePolicy ?? '爆款裂变生成：保留原片结构、节奏和转化触发点，替换非核心画面。',
@@ -380,7 +488,16 @@ async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
         purpose: '爆款裂变无参考视频生成：只基于脚本和分镜生成差异化广告画面。',
         noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和爆款结构生成，不要声称参考了视频。',
       });
-      return {
+      const voiceover = await synthesizeSegmentVoiceover(ctx, variant.index, segment);
+      const audioInstruction =
+        voiceover.audioPath !== undefined
+          ? '\n本分段会随请求提供 reference_audio 口播/对白音频；视频动作、口型、节奏和情绪必须贴合该音频，不要生成与音频冲突的字幕或额外口播。'
+          : '';
+      const noReferenceAudioInstruction =
+        voiceover.audioPath !== undefined
+          ? '\n当前无参考素材 fallback 不会传入 reference_audio；请仅按脚本和分镜生成画面，不要声称参考了音频。'
+          : '';
+      promptSegments.push({
         index: segment.index,
         durationSec: segment.durationSec,
         prompt: workflowPrompt(ctx, 'explosion.seedance', {
@@ -392,7 +509,7 @@ async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
             segments.length,
             referencePolicy,
           ),
-          referencePolicy,
+          referencePolicy: `${referencePolicy}${audioInstruction}`,
         }),
         noReferencePrompt: workflowPrompt(ctx, 'explosion.seedance', {
           copy: variant.copy,
@@ -403,10 +520,11 @@ async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
             segments.length,
             noReferencePolicy,
           ),
-          referencePolicy: noReferencePolicy,
+          referencePolicy: `${noReferencePolicy}${noReferenceAudioInstruction}`,
         }),
-      };
-    });
+        ...voiceover,
+      });
+    }
     promptVariants.push({ index: variant.index, segments: promptSegments });
   }
 
@@ -446,7 +564,7 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         ? artifactPath(ctx.artifactDir, `variant_${variant.index}_part_${segment.index}.mp4`)
         : finalOutputPath;
       const durationSec = segment.durationSec;
-      const resolution = '1080x1920';
+      const resolution = ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION;
       const referencePolicy = buildReferencePolicyText({
         hasReferenceVideo: nextReferencePath !== undefined,
         purpose: scriptParse?.referencePolicy ?? '爆款裂变生成：保留原片结构、节奏和转化触发点，替换非核心画面。',
@@ -458,8 +576,13 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
       const optimizedSegment = videoPrompts?.variants
         .find((item) => item.index === variant.index)
         ?.segments.find((item) => item.index === segment.index);
+      const requestAudioPath =
+        optimizedSegment?.audioPath !== undefined && nextReferencePath !== undefined
+          ? optimizedSegment.audioPath
+          : undefined;
       const request: SeedanceVideoRequest = {
         ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
+        ...(requestAudioPath !== undefined ? { audioPath: requestAudioPath } : {}),
         prompt:
           optimizedSegment?.prompt ??
           workflowPrompt(ctx, 'explosion.seedance', {
@@ -476,9 +599,12 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         durationSec,
         resolution,
         ratio: '9:16',
+        generateAudio: true,
         outputPath,
       };
       let usedReferenceVideo = nextReferencePath !== undefined;
+      let usedReferenceVideoPath: string | undefined = nextReferencePath;
+      let usedAudioPath: string | undefined = requestAudioPath;
       try {
         await ctx.modelClient.generateVideo(request);
       } catch (error) {
@@ -486,6 +612,8 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
           throw error;
         }
         usedReferenceVideo = false;
+        usedReferenceVideoPath = undefined;
+        usedAudioPath = undefined;
         await ctx.modelClient.generateVideo({
           prompt:
             optimizedSegment?.noReferencePrompt ??
@@ -503,6 +631,7 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
           durationSec,
           resolution,
           ratio: request.ratio ?? '9:16',
+          generateAudio: true,
           outputPath,
         });
       }
@@ -512,13 +641,22 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
         path: request.outputPath,
         durationSec,
         usedReferenceVideo,
-        ...(nextReferencePath !== undefined ? { referenceVideoPath: nextReferencePath } : {}),
+        ...(usedReferenceVideoPath !== undefined ? { referenceVideoPath: usedReferenceVideoPath } : {}),
+        ...(usedAudioPath !== undefined ? { audioPath: usedAudioPath } : {}),
+        ...(optimizedSegment?.voiceoverText !== undefined
+          ? { voiceoverText: optimizedSegment.voiceoverText }
+          : {}),
+        ...(optimizedSegment?.voiceGender !== undefined ? { voiceGender: optimizedSegment.voiceGender } : {}),
+        ...(optimizedSegment?.voiceSpeaker !== undefined
+          ? { voiceSpeaker: optimizedSegment.voiceSpeaker }
+          : {}),
       });
       nextReferencePath = request.outputPath;
     }
 
     if (generatedSegments.length > 1) {
-      await concatVideos(
+      const hasVoiceoverAudio = generatedSegments.some((segment) => segment.audioPath !== undefined);
+      await (hasVoiceoverAudio ? concatVideos : concatSilentVideos)(
         generatedSegments.map((segment) => segment.path),
         finalOutputPath,
       );
@@ -541,12 +679,40 @@ async function runAudioReplace(ctx: StepContext<ExplosionInput>) {
   const transcript = await readJson<TranscriptResult>(
     artifactPath(ctx.artifactDir, 'transcript.json'),
   );
-  const shouldUseSeedanceAudio = isEmptyTranscript(transcript);
+  const videoPromptsPath = artifactPath(ctx.artifactDir, 'video_prompts.json');
+  const videoPrompts = existsSync(videoPromptsPath)
+    ? await readJson<ExplosionVideoPrompts>(videoPromptsPath)
+    : undefined;
+  const seedanceOutputsPath = artifactPath(ctx.artifactDir, 'seedance_outputs.json');
+  const seedanceOutputs = existsSync(seedanceOutputsPath)
+    ? await readJson<GeneratedVideoOutput[]>(seedanceOutputsPath)
+    : [];
+  const shouldUseSeedanceAudioByDefault = isEmptyTranscript(transcript);
   const outputs: FinalVideoOutput[] = [];
   for (const variant of variants) {
     const generatedVideoPath = artifactPath(ctx.artifactDir, `variant_${variant.index}.mp4`);
     const finalPath = artifactPath(ctx.artifactDir, `final_${variant.index}.mp4`);
-    if (shouldUseSeedanceAudio) {
+    const seedanceOutput = seedanceOutputs.find((output) => output.index === variant.index);
+    const promptSegments =
+      videoPrompts?.variants.find((output) => output.index === variant.index)?.segments ?? [];
+    const allSegmentsUsedSeedanceTtsAudio =
+      seedanceOutput?.segments.length !== undefined &&
+      seedanceOutput.segments.length > 0 &&
+      seedanceOutput.segments.every((segment) => segment.audioPath !== undefined);
+    const hasPromptTtsAudio = promptSegments.some((segment) => segment.audioPath !== undefined);
+    if (allSegmentsUsedSeedanceTtsAudio) {
+      await copyFile(generatedVideoPath, finalPath);
+    } else if (hasPromptTtsAudio) {
+      const ttsTrackPath = artifactPath(ctx.artifactDir, `variant_${variant.index}_tts_track.m4a`);
+      await concatAudioSegments(
+        promptSegments.map((segment) => ({
+          ...(segment.audioPath !== undefined ? { audioPath: segment.audioPath } : {}),
+          durationSec: segment.durationSec,
+        })),
+        ttsTrackPath,
+      );
+      await replaceAudio(generatedVideoPath, ttsTrackPath, finalPath);
+    } else if (shouldUseSeedanceAudioByDefault) {
       await copyFile(generatedVideoPath, finalPath);
     } else {
       await replaceAudio(generatedVideoPath, artifactPath(ctx.artifactDir, 'source.m4a'), finalPath);
@@ -560,7 +726,11 @@ async function runAudioReplace(ctx: StepContext<ExplosionInput>) {
     outputs.push({
       index: variant.index,
       path: finalPath,
-      audioSource: shouldUseSeedanceAudio ? 'seedance' : 'source_audio',
+      audioSource: allSegmentsUsedSeedanceTtsAudio || hasPromptTtsAudio
+        ? 'tts_seedance'
+        : shouldUseSeedanceAudioByDefault
+          ? 'seedance'
+          : 'source_audio',
     });
   }
   return {

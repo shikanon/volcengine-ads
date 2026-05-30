@@ -4,6 +4,7 @@ import { copyFile } from 'node:fs/promises';
 import { AppError } from '../../errors.js';
 import { concatWithFade, extractAudio, muxAudioVideo, normalizeVideo } from '../../media/ffmpeg.js';
 import {
+  DEFAULT_VIDEO_RESOLUTION,
   getPretrailerVideoTypePrompt,
   normalizePretrailerStyle,
   type PretrailerInput,
@@ -12,6 +13,7 @@ import {
   artifactPath,
   buildReferencePolicyText,
   buildSeedancePromptCard,
+  normalizeSeedanceGenerationDuration,
   parseModelJson,
   readJson,
   waitForScriptConfirmation,
@@ -218,8 +220,10 @@ async function runSeedance(ctx: StepContext<PretrailerInput>) {
     : undefined;
   await ctx.modelClient.generateVideo({
     prompt: videoPrompts?.prompt ?? buildPretrailerFinalPrompt(ctx, script),
-    durationSec: ctx.input.pretrailerDuration,
+    durationSec: normalizeSeedanceGenerationDuration(ctx.input.pretrailerDuration),
+    resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
     ratio: '9:16',
+    generateAudio: true,
     outputPath: artifactPath(ctx.artifactDir, 'pretrailer.mp4'),
   });
   return { artifactPath: artifactPath(ctx.artifactDir, 'pretrailer.mp4') };

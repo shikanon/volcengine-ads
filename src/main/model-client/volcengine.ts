@@ -654,6 +654,15 @@ export class VolcengineModelClient implements ModelClient {
         role: 'reference_video',
       });
     }
+    if (req.audioPath) {
+      const audioPath = requireLocalFile(req.audioPath, 'Seedance 参考音频');
+      validateSeedanceAudio(audioPath, 'Seedance 参考音频');
+      content.push({
+        type: 'audio_url',
+        audio_url: { url: await fileToDataUrl(audioPath) },
+        role: 'reference_audio',
+      });
+    }
     return this.submitAndDownloadVideo(
       content,
       outputPath,
@@ -687,7 +696,14 @@ export class VolcengineModelClient implements ModelClient {
         text: req.prompt ?? '基于参考音频驱动数字人口播，保持正面构图、自然唇形和轻微表情动作。',
       },
     ];
-    return this.submitAndDownloadVideo(content, outputPath, durationSec, '720p');
+    return this.submitAndDownloadVideo(
+      content,
+      outputPath,
+      durationSec,
+      normalizeSeedanceResolution(req.resolution),
+      'adaptive',
+      req.generateAudio ?? false,
+    );
   }
 
   async asr(audioPath: string): Promise<TranscriptResult> {
@@ -829,7 +845,7 @@ export class VolcengineModelClient implements ModelClient {
     if (normalizedText.length > 1000) {
       throw new AppError('E_INPUT_VALIDATION', 'TTS 文本不能超过 1000 字符');
     }
-    const outputPath = `${process.cwd()}/tmp/tts-${Date.now()}.mp3`;
+    const outputPath = `${process.cwd()}/tmp/tts-${Date.now()}-${randomUUID()}.mp3`;
     return MODEL_LIMIT(() =>
       pRetry(
         async () => {

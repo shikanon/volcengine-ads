@@ -5,7 +5,7 @@ import pLimit from 'p-limit';
 
 import { AppError, toAppError } from '../../errors.js';
 import { concatSilentVideos, concatVideos, muxAudioVideo, trimVideo } from '../../media/ffmpeg.js';
-import type { NativeIndustry, NativeInput } from '../../../shared/types.js';
+import { DEFAULT_VIDEO_RESOLUTION, type NativeIndustry, type NativeInput } from '../../../shared/types.js';
 import { NATIVE_INDUSTRY_DEFINITIONS } from '../../../shared/workflows.js';
 import { errorTypeLabel } from '../task-log.js';
 import {
@@ -14,6 +14,8 @@ import {
   buildSeedancePromptCard,
   parseModelJson,
   readJson,
+  SEEDANCE_MIN_GENERATION_DURATION_SEC,
+  splitDurationForSeedanceGeneration,
   waitForScriptConfirmation,
   workflowPrompt,
   writeJson,
@@ -176,9 +178,7 @@ interface StoryboardSegment {
   durationSec: number;
 }
 
-const SEEDANCE_MIN_DURATION_SEC = 4;
-const SEEDANCE_MAX_DURATION_SEC = 15;
-
+const SEEDANCE_MIN_DURATION_SEC = SEEDANCE_MIN_GENERATION_DURATION_SEC;
 function createRoute(input: NativeInput): IndustryRoute {
   const definition = NATIVE_INDUSTRY_DEFINITIONS[input.industry];
   const hardRules: IndustryRoute['hardRules'] = {
@@ -352,22 +352,7 @@ function isReferenceVideoRejected(error: unknown): boolean {
 }
 
 function splitDurationForSeedance(durationSec: number): number[] {
-  const normalizedDuration = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(durationSec));
-  const chunks: number[] = [];
-  let remaining = normalizedDuration;
-  while (remaining > SEEDANCE_MAX_DURATION_SEC) {
-    const remainingAfterMax = remaining - SEEDANCE_MAX_DURATION_SEC;
-    const current =
-      remainingAfterMax > 0 && remainingAfterMax < SEEDANCE_MIN_DURATION_SEC
-        ? SEEDANCE_MAX_DURATION_SEC - (SEEDANCE_MIN_DURATION_SEC - remainingAfterMax)
-        : SEEDANCE_MAX_DURATION_SEC;
-    chunks.push(current);
-    remaining -= current;
-  }
-  if (remaining > 0) {
-    chunks.push(remaining);
-  }
-  return chunks;
+  return splitDurationForSeedanceGeneration(durationSec);
 }
 
 function normalizeVariantShotsForTarget(
@@ -798,9 +783,9 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                 referencePolicy,
               }),
             durationSec: segment.durationSec,
-            resolution: ctx.input.ratio === '16:9' ? '1080p' : '720p',
+            resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
             ratio: ctx.input.ratio,
-            generateAudio: !shouldMuxVoiceover,
+            generateAudio: true,
             outputPath: segmentPath,
             ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
           };
@@ -874,7 +859,7 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                 durationSec: videoRequest.durationSec,
                 resolution: videoRequest.resolution,
                 ratio: videoRequest.ratio,
-                generateAudio: videoRequest.generateAudio,
+                generateAudio: true,
                 outputPath: videoRequest.outputPath,
               });
             } catch (fallbackError) {

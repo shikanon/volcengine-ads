@@ -21,6 +21,7 @@ export interface SeedreamImageRequest {
 export interface SeedanceVideoRequest {
   refVideoPath?: string;
   refImagePaths?: string[];
+  audioPath?: string;
   prompt: string;
   durationSec?: number;
   resolution?: string;
@@ -34,6 +35,8 @@ export interface SeedanceAvatarRequest {
   avatarImagePath: string;
   prompt?: string;
   durationSec?: number;
+  resolution?: string;
+  generateAudio?: boolean;
   outputPath: string;
 }
 

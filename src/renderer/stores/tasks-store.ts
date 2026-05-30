@@ -51,6 +51,9 @@ function updateStepFromProgress(task: TaskRecord, step: TaskStep, event: TaskPro
   if (step.step === event.step && event.message !== undefined) {
     next.logs = event.message;
   }
+  if (step.step === event.step && event.artifactPath !== undefined) {
+    next.artifactPath = event.artifactPath;
+  }
   return next;
 }
 

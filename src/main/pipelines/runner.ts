@@ -136,6 +136,7 @@ export async function runPipeline(params: {
           progress,
           step: step.name,
           message: result.awaitingConfirmation.message,
+          ...(result.artifactPath !== undefined ? { artifactPath: result.artifactPath } : {}),
         });
         return;
       }
