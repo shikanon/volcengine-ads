@@ -1,6 +1,6 @@
 import type { WorkflowPromptOverrides } from './workflows.js';
 
-export type TaskType = 'explosion' | 'pretrailer' | 'avatar' | 'native';
+export type TaskType = 'explosion' | 'pretrailer' | 'avatar' | 'native' | 'copywriting';
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -21,6 +21,8 @@ export type AssetKind = 'video' | 'audio' | 'image' | 'script' | 'report';
 export type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool' | 'ecommerce';
 export type NativeRatio = '9:16' | '16:9' | '1:1';
 export type VideoResolution = '480p' | '720p' | '1080p';
+export type CopywritingScriptFormat = 'short_video' | 'feed_ad' | 'live_stream';
+export type CopywritingIndustry = NativeIndustry | 'auto';
 
 export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = '720p';
 
@@ -28,6 +30,28 @@ export const VIDEO_RESOLUTION_OPTIONS: Array<{ value: VideoResolution; label: st
   { value: '480p', label: '480P' },
   { value: '720p', label: '720P' },
   { value: '1080p', label: '1080P' },
+];
+
+export const COPYWRITING_SCRIPT_FORMAT_DEFINITIONS: Array<{
+  value: CopywritingScriptFormat;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'short_video',
+    label: '短视频脚本',
+    description: '适合信息流短视频、达人口播、AIGC 视频生成前的脚本文案。',
+  },
+  {
+    value: 'feed_ad',
+    label: '信息流文案',
+    description: '适合图文卡片、落地页首屏、广告素材标题和正文组合。',
+  },
+  {
+    value: 'live_stream',
+    label: '直播口播',
+    description: '适合直播间开场、产品讲解、权益节奏和逼单话术。',
+  },
 ];
 
 export const SUPPORTED_TTS_SPEAKERS = [
@@ -50,7 +74,7 @@ export interface TaskRecord {
   type: TaskType;
   status: TaskStatus;
   progress: number;
-  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput;
+  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput | CopywritingInput;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -193,6 +217,18 @@ export interface NativeInput {
   resolution?: VideoResolution;
 }
 
+export interface CopywritingInput {
+  industry: CopywritingIndustry;
+  requirement: string;
+  productName?: string;
+  audience?: string;
+  platform?: string;
+  format: CopywritingScriptFormat;
+  variantCount: number;
+  durationSec: number;
+  enableWebSearch?: boolean;
+}
+
 export interface AssetRecord {
   id: string;
   taskId?: string;
@@ -280,7 +316,7 @@ export interface TaskProgressEvent {
 
 export interface CreateTaskRequest {
   type: TaskType;
-  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput;
+  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput | CopywritingInput;
 }
 
 export interface RetryStepRequest {

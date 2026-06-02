@@ -11,6 +11,7 @@ import {
   AppstoreOutlined,
   ApartmentOutlined,
   ClockCircleOutlined,
+  FileTextOutlined,
   HomeOutlined,
   PlayCircleOutlined,
   RocketOutlined,
@@ -23,6 +24,7 @@ import { api } from './ipc.js';
 import { TaskTable } from './components/TaskTable.js';
 import { Assets } from './pages/Assets.js';
 import { Avatar } from './pages/Avatar.js';
+import { Copywriting } from './pages/Copywriting.js';
 import { Explosion } from './pages/Explosion.js';
 import { Home } from './pages/Home.js';
 import { Native } from './pages/Native.js';
@@ -31,12 +33,22 @@ import { Settings } from './pages/Settings.js';
 import { Workflows } from './pages/Workflows.js';
 import { useTasksStore } from './stores/tasks-store.js';
 
-type PageKey = 'home' | 'explosion' | 'native' | 'pretrailer' | 'avatar' | 'workflows' | 'assets' | 'settings';
+type PageKey =
+  | 'home'
+  | 'explosion'
+  | 'native'
+  | 'copywriting'
+  | 'pretrailer'
+  | 'avatar'
+  | 'workflows'
+  | 'assets'
+  | 'settings';
 
 const PAGE_TITLES: Record<PageKey, string> = {
   home: '工作台',
   explosion: '广告爆款裂变',
   native: '原生爆款素材',
+  copywriting: '广告文案脚本',
   pretrailer: '广告前贴',
   avatar: '数字人口播',
   workflows: '工作流',
@@ -48,6 +60,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
   home: '本地任务队列',
   explosion: '链接到批量素材',
   native: '六行业工作流生成',
+  copywriting: '需求拆解到爆款脚本',
   pretrailer: '原片到开场钩子',
   avatar: '品牌资料到口播视频',
   workflows: '节点逻辑与 Prompt 调试',
@@ -57,6 +70,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
 
 const NAV_ITEMS: Array<{ key: PageKey; icon: ReactNode; label: string }> = [
   { key: 'home', icon: <HomeOutlined />, label: '工作台' },
+  { key: 'copywriting', icon: <FileTextOutlined />, label: '广告文案脚本编写' },
   { key: 'explosion', icon: <ThunderboltOutlined />, label: '广告爆款素材裂变' },
   { key: 'native', icon: <RocketOutlined />, label: '原生爆款素材生成' },
   { key: 'pretrailer', icon: <PlayCircleOutlined />, label: '广告吸引前贴生成' },
@@ -83,6 +97,7 @@ export function App() {
   const content = useMemo(() => {
     if (page === 'explosion') return <Explosion />;
     if (page === 'native') return <Native />;
+    if (page === 'copywriting') return <Copywriting />;
     if (page === 'pretrailer') return <Pretrailer />;
     if (page === 'avatar') return <Avatar />;
     if (page === 'workflows') return <Workflows />;

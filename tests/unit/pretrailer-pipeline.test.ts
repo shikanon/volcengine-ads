@@ -73,6 +73,10 @@ class PretrailerMockModelClient implements ModelClient {
     return JSON.stringify({ text: '清脆切开所有犹豫，马上看到结果', hookAtSec: 0.5 });
   }
 
+  async webSearch(): Promise<never> {
+    throw new Error('webSearch should not be called');
+  }
+
   async vision(): Promise<string> {
     throw new Error('vision should not be called');
   }
@@ -141,6 +145,79 @@ describe('pretrailerPipeline', () => {
     );
     expect(modelClient.chatRequests[0]?.[1]?.content).toEqual(
       expect.stringContaining('清脆、治愈的 ASMR 切割声'),
+    );
+  });
+
+  it('injects the selected pretrailer video generation type template into script generation', async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), 'pretrailer-pipeline-'));
+    const input: PretrailerInput = {
+      sourceVideoPath: join(artifactDir, 'source-input.mp4'),
+      pretrailerDuration: 7,
+      style: 'giant_miniature',
+    };
+    const task: TaskRecord = {
+      id: 'task-pretrailer',
+      type: 'pretrailer',
+      status: 'running',
+      progress: 0,
+      input,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      steps: [],
+    };
+    await writeFile(
+      join(artifactDir, 'understanding.json'),
+      JSON.stringify({
+        confidence: 0.9,
+        category: '工具',
+        sellingPoints: ['高效生成'],
+        visualStyle: '手机界面、明亮色调、居中构图、快速推进镜头',
+        audience: '内容创作者',
+      }),
+      'utf8',
+    );
+    await writeFile(
+      join(artifactDir, 'copy.json'),
+      JSON.stringify({ text: '小到一颗按键，也能装下所有创意', hookAtSec: 0.5 }),
+      'utf8',
+    );
+    const step = pretrailerPipeline.steps.find((item) => item.name === 'script_gen');
+    if (step === undefined) {
+      throw new Error('script_gen step missing');
+    }
+    const modelClient = new PretrailerMockModelClient();
+    vi.spyOn(modelClient, 'chat').mockImplementation(async (messages) => {
+      modelClient.chatRequests.push(messages);
+      return JSON.stringify({
+        firstSecondVisual: '微型人物站在巨大键盘按键旁',
+        transitionPlan: '末帧回到原片手机界面',
+        shots: [
+          {
+            index: 1,
+            durationSec: 1,
+            prompt: '微型人物比键盘按键还小，站在巨大手机界面前做轻喜剧动作',
+          },
+        ],
+      });
+    });
+
+    await expect(
+      step.runStep({
+        task,
+        input,
+        artifactDir,
+        repository: {} as TaskRepository,
+        modelClient,
+        workflowPrompts: {},
+        emitProgress: () => undefined,
+      }),
+    ).resolves.toEqual({ artifactPath: join(artifactDir, 'script.json') });
+
+    expect(modelClient.chatRequests[0]?.[1]?.content).toEqual(
+      expect.stringContaining('巨物/微型前贴：把日常物体生成巨大尺度'),
+    );
+    expect(modelClient.chatRequests[0]?.[1]?.content).toEqual(
+      expect.stringContaining('真实环境参照物、尺度反差和轻喜剧动作'),
     );
   });
 
@@ -332,7 +409,7 @@ describe('pretrailerPipeline', () => {
     });
 
     expect(concatWithFade).toHaveBeenCalledWith(
-      join(artifactDir, 'pretrailer_av.mp4'),
+      join(artifactDir, 'pretrailer.mp4'),
       join(artifactDir, 'source.mp4'),
       join(artifactDir, 'final.mp4'),
       { firstDurationSec: 7 },

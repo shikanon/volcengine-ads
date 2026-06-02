@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react';
 import { Typography } from 'antd';
-import { PlayCircleOutlined, RocketOutlined, ThunderboltOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  FileTextOutlined,
+  PlayCircleOutlined,
+  RocketOutlined,
+  ThunderboltOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 
 import { TaskTable } from '../components/TaskTable.js';
 import { useTasksStore } from '../stores/tasks-store.js';
 import type { TaskStatus } from '../../shared/types.js';
 
 interface HomeProps {
-  onNavigate(page: 'explosion' | 'native' | 'pretrailer' | 'avatar'): void;
+  onNavigate(page: 'explosion' | 'native' | 'copywriting' | 'pretrailer' | 'avatar'): void;
 }
 
 type QueueFilter = 'all' | TaskStatus | 'needs_attention';
@@ -26,6 +32,13 @@ const WORKFLOW_LAUNCHERS = [
     title: '原生爆款素材',
     description: '按行业 brief 生成概念、脚本、素材和成片。',
     meta: '六行业模板',
+  },
+  {
+    key: 'copywriting',
+    icon: <FileTextOutlined />,
+    title: '广告文案脚本',
+    description: '输入需求，拆解卖点和人群，输出多条爆款脚本。',
+    meta: 'LLM 深度分析',
   },
   {
     key: 'pretrailer',

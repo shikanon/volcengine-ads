@@ -7,6 +7,7 @@ export interface ModelClient {
   asr(audioPath: string): Promise<TranscriptResult>;
   tts(text: string, voice?: string): Promise<AudioResult>;
   chat(messages: ChatMessage[], opts?: ChatOptions): Promise<string>;
+  webSearch(req: WebSearchRequest): Promise<WebSearchResult>;
   vision(images: string[], prompt: string, opts?: VisionOptions): Promise<string>;
   visionVideo(videoPath: string, prompt: string, opts?: VisionOptions): Promise<string>;
 }
@@ -98,6 +99,23 @@ export interface ChatOptions {
 export type VisionOptions = ChatOptions;
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
+
+export interface WebSearchRequest {
+  query: string;
+  maxKeyword?: number;
+  model?: string;
+}
+
+export interface WebSearchCitation {
+  title?: string;
+  url?: string;
+  snippet?: string;
+}
+
+export interface WebSearchResult {
+  text: string;
+  citations: WebSearchCitation[];
+}
 
 export interface ModelClientFactory {
   create(): Promise<ModelClient>;

@@ -186,4 +186,64 @@ describe('validateCreateTaskRequest', () => {
       },
     });
   });
+
+  it('accepts copywriting generation input', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'copywriting',
+        input: {
+          industry: 'auto',
+          requirement: '为一款通勤保温杯写短视频广告脚本，突出轻量、保温和办公室使用场景。',
+          productName: '轻量保温杯',
+          audience: '一线城市通勤白领',
+          platform: '抖音信息流',
+          format: 'short_video',
+          variantCount: 3,
+          durationSec: 30,
+        },
+      }),
+    ).toEqual({
+      type: 'copywriting',
+      input: {
+        industry: 'auto',
+        requirement: '为一款通勤保温杯写短视频广告脚本，突出轻量、保温和办公室使用场景。',
+        productName: '轻量保温杯',
+        audience: '一线城市通勤白领',
+        platform: '抖音信息流',
+        format: 'short_video',
+        variantCount: 3,
+        durationSec: 30,
+        enableWebSearch: true,
+      },
+    });
+  });
+
+  it('rejects unsupported copywriting script format', () => {
+    const request = {
+      type: 'copywriting',
+      input: {
+        requirement: '为一款通勤保温杯写短视频广告脚本，突出轻量、保温和办公室使用场景。',
+        format: 'poster',
+        variantCount: 3,
+        durationSec: 30,
+      },
+    } as unknown as Parameters<typeof validateCreateTaskRequest>[0];
+
+    expect(() => validateCreateTaskRequest(request)).toThrow(AppError);
+  });
+
+  it('rejects unsupported copywriting industry template', () => {
+    const request = {
+      type: 'copywriting',
+      input: {
+        industry: 'finance',
+        requirement: '为一款通勤保温杯写短视频广告脚本，突出轻量、保温和办公室使用场景。',
+        format: 'short_video',
+        variantCount: 3,
+        durationSec: 30,
+      },
+    } as unknown as Parameters<typeof validateCreateTaskRequest>[0];
+
+    expect(() => validateCreateTaskRequest(request)).toThrow(AppError);
+  });
 });

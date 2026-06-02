@@ -20,6 +20,7 @@ const TASK_TYPE_LABEL: Record<TaskType, string> = {
   pretrailer: '广告前贴',
   avatar: '数字人口播',
   native: '原生爆款',
+  copywriting: '文案脚本',
 };
 
 const TASK_STATUS_LABEL: Record<TaskRecord['status'], string> = {
@@ -88,6 +89,14 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     asset_generator: '素材生成',
     consistency_checker: '一致性检测',
     composer: '成片入库',
+  },
+  copywriting: {
+    industry_router: '行业模板路由',
+    template_optimize: '模板优化',
+    web_research: '联网补充',
+    requirement_decompose: '需求拆解',
+    strategy_analysis: '策略分析',
+    script_writer: '爆款脚本',
   },
 };
 

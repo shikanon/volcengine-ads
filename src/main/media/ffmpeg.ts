@@ -27,6 +27,8 @@ if (ffmpegPath !== undefined) {
 interface MediaInfo {
   hasAudio: boolean;
   durationSec?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface AudioConcatSegment {
@@ -62,14 +64,38 @@ function readMediaInfo(inputPath: string): Promise<MediaInfo> {
               Number(durationMatch[3])
             : undefined;
         const hasAudio = /Stream #\d+:\d+(?:\[[^\]]+\])?(?:\([^)]+\))?: Audio:/u.test(output);
+        const videoMatch = /Stream #\d+:\d+(?:\[[^\]]+\])?(?:\([^)]+\))?: Video:[^\n]*?,\s*(\d+)x(\d+)/u.exec(output);
+        const width = videoMatch?.[1] !== undefined ? Number(videoMatch[1]) : undefined;
+        const height = videoMatch?.[2] !== undefined ? Number(videoMatch[2]) : undefined;
         if (durationSec === undefined && !/Input #/u.test(output)) {
           reject(new AppError('E_FFMPEG_FAILED', `无法读取媒体信息：${inputPath}`));
           return;
         }
-        resolve(durationSec !== undefined ? { hasAudio, durationSec } : { hasAudio });
+        resolve({
+          hasAudio,
+          ...(durationSec !== undefined ? { durationSec } : {}),
+          ...(width !== undefined && height !== undefined ? { width, height } : {}),
+        });
       },
     );
   });
+}
+
+function evenDimension(value: number): number {
+  return Math.max(2, Math.floor(value / 2) * 2);
+}
+
+function targetVideoSize(primary: MediaInfo, fallback: MediaInfo): { width: number; height: number } {
+  const width = primary.width ?? fallback.width;
+  const height = primary.height ?? fallback.height;
+  if (width === undefined || height === undefined) {
+    throw new AppError('E_FFMPEG_FAILED', '无法读取视频尺寸，不能拼接视频');
+  }
+  return { width: evenDimension(width), height: evenDimension(height) };
+}
+
+function videoFilter(inputIndex: number, outputLabel: string, width: number, height: number): string {
+  return `[${inputIndex}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[${outputLabel}]`;
 }
 
 function filterDuration(durationSec: number | undefined, fallbackDurationSec?: number): string {
@@ -245,16 +271,14 @@ export async function concatWithFade(
   const fadeDurationSec = normalizeFadeDuration(options.fadeDurationSec);
   const offsetSec = fadeOffset(options.firstDurationSec, fadeDurationSec);
   const [firstInfo, secondInfo] = await Promise.all([readMediaInfo(firstPath), readMediaInfo(secondPath)]);
+  const { width, height } = targetVideoSize(secondInfo, firstInfo);
   await run(
     ffmpeg()
       .input(firstPath)
       .input(secondPath)
       .complexFilter([
-        '[0:v]fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[v0base]',
-        '[1:v]fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[v1base]',
-        '[v0base][v1base]scale2ref=w=main_w:h=main_h[v0scaled][v1ref]',
-        '[v0scaled]settb=AVTB,setpts=PTS-STARTPTS[v0]',
-        '[v1ref]settb=AVTB,setpts=PTS-STARTPTS[v1]',
+        videoFilter(0, 'v0', width, height),
+        videoFilter(1, 'v1', width, height),
         `[v0][v1]xfade=transition=fade:duration=${fadeDurationSec}:offset=${offsetSec},format=yuv420p[v]`,
         audioFilter(0, firstInfo, 'a0', options.firstDurationSec),
         audioFilter(1, secondInfo, 'a1'),

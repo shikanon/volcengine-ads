@@ -1,8 +1,7 @@
 import { existsSync } from 'node:fs';
-import { copyFile } from 'node:fs/promises';
 
 import { AppError } from '../../errors.js';
-import { concatWithFade, extractAudio, muxAudioVideo, normalizeVideo } from '../../media/ffmpeg.js';
+import { concatWithFade, extractAudio, normalizeVideo } from '../../media/ffmpeg.js';
 import {
   DEFAULT_VIDEO_RESOLUTION,
   getPretrailerVideoTypePrompt,
@@ -175,6 +174,8 @@ async function runScriptGen(ctx: StepContext<PretrailerInput>) {
         pretrailerDuration: ctx.input.pretrailerDuration,
         copyText: copy.text,
         understandingJson: JSON.stringify(understanding),
+        style: getPretrailerVideoTypePrompt(ctx.input.style),
+        videoType: normalizePretrailerStyle(ctx.input.style),
       }),
     },
   ]);
@@ -229,26 +230,10 @@ async function runSeedance(ctx: StepContext<PretrailerInput>) {
   return { artifactPath: artifactPath(ctx.artifactDir, 'pretrailer.mp4') };
 }
 
-async function runTts(ctx: StepContext<PretrailerInput>) {
-  const copy = await readJson<PretrailerCopy>(artifactPath(ctx.artifactDir, 'copy.json'));
-  const audio = await ctx.modelClient.tts(copy.text);
-  await copyFile(audio.localPath, artifactPath(ctx.artifactDir, 'pretrailer.m4a'));
-  return { artifactPath: artifactPath(ctx.artifactDir, 'pretrailer.m4a') };
-}
-
-async function runMuxPretrailer(ctx: StepContext<PretrailerInput>) {
-  await muxAudioVideo(
-    artifactPath(ctx.artifactDir, 'pretrailer.mp4'),
-    artifactPath(ctx.artifactDir, 'pretrailer.m4a'),
-    artifactPath(ctx.artifactDir, 'pretrailer_av.mp4'),
-  );
-  return { artifactPath: artifactPath(ctx.artifactDir, 'pretrailer_av.mp4') };
-}
-
 async function runConcat(ctx: StepContext<PretrailerInput>) {
   const finalPath = artifactPath(ctx.artifactDir, 'final.mp4');
   await concatWithFade(
-    artifactPath(ctx.artifactDir, 'pretrailer_av.mp4'),
+    artifactPath(ctx.artifactDir, 'pretrailer.mp4'),
     artifactPath(ctx.artifactDir, 'source.mp4'),
     finalPath,
     { firstDurationSec: ctx.input.pretrailerDuration },
@@ -267,8 +252,6 @@ export const pretrailerPipeline: PipelineDefinition<PretrailerInput> = {
     { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
     { name: 'seedance', runStep: runSeedance },
-    { name: 'tts', runStep: runTts },
-    { name: 'mux_pretrailer', runStep: runMuxPretrailer },
     { name: 'concat', runStep: runConcat },
   ],
 };

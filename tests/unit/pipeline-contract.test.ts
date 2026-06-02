@@ -29,7 +29,6 @@ describe('pipeline step contracts', () => {
       'script_confirm',
       'video_prompt_optimize',
       'seedance',
-      'audio_replace',
     ]);
   });
 
@@ -42,8 +41,6 @@ describe('pipeline step contracts', () => {
       'script_confirm',
       'video_prompt_optimize',
       'seedance',
-      'tts',
-      'mux_pretrailer',
       'concat',
     ]);
   });
@@ -78,6 +75,17 @@ describe('pipeline step contracts', () => {
     ]);
   });
 
+  it('keeps copywriting steps aligned with spec.md §3', () => {
+    expect(getStepNames('copywriting')).toEqual([
+      'industry_router',
+      'template_optimize',
+      'web_research',
+      'requirement_decompose',
+      'strategy_analysis',
+      'script_writer',
+    ]);
+  });
+
   it('keeps composition guidance in video generation meta prompts', () => {
     const prompts = getDefaultWorkflowPrompts();
     const videoPromptIds: WorkflowPromptId[] = [
@@ -104,6 +112,9 @@ describe('pipeline step contracts', () => {
       'pretrailer.copy_gen',
       'pretrailer.script_gen',
       'pretrailer.seedance',
+      'copywriting.template_optimize',
+      'copywriting.requirement_decompose',
+      'copywriting.script_writer',
       'native.concept_plan',
       'native.script_writer',
       'native.storyboard_builder',
@@ -123,6 +134,7 @@ describe('pipeline step contracts', () => {
       'pretrailer.copy_gen',
       'pretrailer.script_gen',
       'pretrailer.seedance',
+      'copywriting.template_optimize',
       'native.concept_plan',
       'native.storyboard_builder',
       'native.asset_generator',
@@ -170,6 +182,11 @@ describe('pipeline step contracts', () => {
       'avatar.product_understand',
       'avatar.brand_parse',
       'avatar.script_gen',
+      'copywriting.template_optimize',
+      'copywriting.web_research',
+      'copywriting.requirement_decompose',
+      'copywriting.strategy_analysis',
+      'copywriting.script_writer',
       'native.concept_plan',
       'native.script_writer',
       'native.storyboard_builder',
@@ -232,6 +249,9 @@ describe('pipeline step contracts', () => {
       expect(prompts[id]).toContain('4-15 秒');
     }
     expect(prompts['pretrailer.script_gen']).toContain('单次 durationSec 使用 {pretrailerDuration}s');
+    expect(prompts['pretrailer.script_gen']).toContain('视频生成类型：{videoType}');
+    expect(prompts['pretrailer.script_gen']).toContain('巨物或微型主体、真实环境参照物、尺度反差和轻喜剧动作');
+    expect(prompts['pretrailer.seedance']).toContain('不额外传入本地 TTS 音频');
     expect(prompts['avatar.script_gen']).toContain('4-15 秒单次调用范围切分');
   });
 });

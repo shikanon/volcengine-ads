@@ -315,6 +315,10 @@ class NativeMockModelClient implements ModelClient {
     return response;
   }
 
+  async webSearch(): Promise<never> {
+    throw new Error('webSearch should not be called');
+  }
+
   async vision(): Promise<string> {
     throw new Error('vision should not be called');
   }

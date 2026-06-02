@@ -16,3 +16,14 @@ test('native workflow exposes all six-industry generation nodes', () => {
     'composer',
   ]);
 });
+
+test('copywriting workflow exposes requirement-to-script nodes', () => {
+  expect(WORKFLOW_DEFINITIONS.copywriting.nodes.map((node) => node.id)).toEqual([
+    'industry_router',
+    'template_optimize',
+    'web_research',
+    'requirement_decompose',
+    'strategy_analysis',
+    'script_writer',
+  ]);
+});

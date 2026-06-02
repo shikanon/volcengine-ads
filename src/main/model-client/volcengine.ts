@@ -25,6 +25,9 @@ import type {
   TranscriptResult,
   VideoResult,
   VisionOptions,
+  WebSearchCitation,
+  WebSearchRequest,
+  WebSearchResult,
 } from './index.js';
 
 const MODEL_LIMIT = pLimit(2);
@@ -103,6 +106,10 @@ function isAsrNoSpeech(statusCode: string | null, message: string): boolean {
 }
 
 type AsrSubmitResult = 'submitted' | 'empty_transcript';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
@@ -340,6 +347,10 @@ function requireIntegerRange(
   return normalized;
 }
 
+function normalizeWebSearchMaxKeyword(value: number | undefined): number {
+  return requireIntegerRange(value ?? 2, '联网搜索关键词数量', 1, 5);
+}
+
 function normalizeSeedanceResolution(resolution: string | undefined): string {
   if (resolution === undefined) {
     return '720p';
@@ -527,6 +538,125 @@ async function parseJson<T>(response: Awaited<ReturnType<typeof fetch>>): Promis
     );
   }
   return JSON.parse(body) as T;
+}
+
+function parseResponsesPayload(body: string): unknown[] {
+  const trimmed = body.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+  if (!trimmed.startsWith('data:') && !trimmed.includes('\ndata:')) {
+    return [JSON.parse(trimmed) as unknown];
+  }
+
+  const events: unknown[] = [];
+  let dataLines: string[] = [];
+  const flush = () => {
+    if (dataLines.length === 0) {
+      return;
+    }
+    const data = dataLines.join('\n').trim();
+    dataLines = [];
+    if (data.length === 0 || data === '[DONE]') {
+      return;
+    }
+    events.push(JSON.parse(data) as unknown);
+  };
+
+  for (const line of body.split(/\r?\n/u)) {
+    if (line.trim().length === 0) {
+      flush();
+      continue;
+    }
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice('data:'.length).trimStart());
+    }
+  }
+  flush();
+  return events;
+}
+
+function collectStreamingDeltas(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectStreamingDeltas);
+  }
+  if (!isRecord(value)) {
+    return [];
+  }
+  const type = typeof value.type === 'string' ? value.type : '';
+  const delta = value.delta;
+  if (type.includes('output_text.delta') && typeof delta === 'string') {
+    return [delta];
+  }
+  return Object.values(value).flatMap(collectStreamingDeltas);
+}
+
+function collectOutputText(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectOutputText);
+  }
+  if (!isRecord(value)) {
+    return [];
+  }
+  const type = typeof value.type === 'string' ? value.type : '';
+  const fragments: string[] = [];
+  const outputText = value.output_text;
+  if (typeof outputText === 'string') {
+    fragments.push(outputText);
+  }
+  const text = value.text;
+  if (typeof text === 'string' && (type === 'output_text' || type.includes('output_text'))) {
+    fragments.push(text);
+  }
+  for (const key of ['output', 'content', 'message', 'response'] as const) {
+    fragments.push(...collectOutputText(value[key]));
+  }
+  return fragments;
+}
+
+function extractResponsesText(events: unknown[]): string {
+  const deltas = collectStreamingDeltas(events);
+  const fragments = deltas.length > 0 ? deltas : collectOutputText(events);
+  return fragments.join('').trim();
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function collectWebSearchCitations(value: unknown): WebSearchCitation[] {
+  const citations: WebSearchCitation[] = [];
+  const seen = new Set<string>();
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item);
+      }
+      return;
+    }
+    if (!isRecord(node)) {
+      return;
+    }
+    const url = optionalString(node.url) ?? optionalString(node.uri);
+    if (url !== undefined && /^https?:\/\//iu.test(url) && !seen.has(url)) {
+      seen.add(url);
+      const citation: WebSearchCitation = { url };
+      const title = optionalString(node.title) ?? optionalString(node.name);
+      const snippet = optionalString(node.snippet) ?? optionalString(node.summary);
+      if (title !== undefined) {
+        citation.title = title;
+      }
+      if (snippet !== undefined) {
+        citation.snippet = snippet;
+      }
+      citations.push(citation);
+    }
+    for (const child of Object.values(node)) {
+      visit(child);
+    }
+  };
+  visit(value);
+  return citations;
 }
 
 function extractTaskId(data: ArkTaskResponse): string {
@@ -956,6 +1086,74 @@ export class VolcengineModelClient implements ModelClient {
             throw new AppError('E_MODEL_API_FAILED', 'LLM 响应为空');
           }
           return content;
+        },
+        { retries: 3, factor: 2 },
+      ),
+    );
+  }
+
+  async webSearch(req: WebSearchRequest): Promise<WebSearchResult> {
+    const credentials = this.credentials;
+    if (!credentials.llmApiKey) {
+      throw new AppError('E_MODEL_API_FAILED', 'LLM API Key 未配置');
+    }
+    const query = requireNonEmpty(req.query, '联网搜索查询');
+    const maxKeyword = normalizeWebSearchMaxKeyword(req.maxKeyword);
+    const model = requireNonEmpty(req.model ?? credentials.provider.llmModel, '联网搜索模型');
+
+    return MODEL_LIMIT(() =>
+      pRetry(
+        async () => {
+          const response = await fetch(joinUrl(credentials.provider.llmBaseUrl, '/responses'), {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${credentials.llmApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              stream: true,
+              tools: [
+                {
+                  type: 'web_search',
+                  max_keyword: maxKeyword,
+                },
+              ],
+              input: [
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'input_text',
+                      text: query,
+                    },
+                  ],
+                },
+              ],
+            }),
+          });
+          const body = await response.text();
+          if (!response.ok) {
+            if (response.status === 400) {
+              throw new AppError(
+                'E_INPUT_VALIDATION',
+                `联网搜索参数校验失败：HTTP ${response.status} ${response.statusText} ${body.slice(0, 500)}`,
+              );
+            }
+            throw new AppError(
+              'E_MODEL_API_FAILED',
+              `联网搜索 HTTP ${response.status} ${response.statusText}: ${body.slice(0, 500)}`,
+            );
+          }
+          const events = parseResponsesPayload(body);
+          const text = extractResponsesText(events);
+          if (!text) {
+            throw new AppError('E_MODEL_API_FAILED', '联网搜索响应为空');
+          }
+          return {
+            text,
+            citations: collectWebSearchCitations(events),
+          };
         },
         { retries: 3, factor: 2 },
       ),

@@ -61,6 +61,53 @@ describe('VolcengineModelClient input validation', () => {
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
+  it('rejects empty web search query before the network request', async () => {
+    await expect(
+      new VolcengineModelClient(credentials()).webSearch({ query: '  ' }),
+    ).rejects.toThrow(AppError);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('calls Ark Responses web_search and parses streaming output', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () =>
+        [
+          'event: response.output_text.delta',
+          'data: {"type":"response.output_text.delta","delta":"{\\"summary\\":\\"热梗补充\\"}"}',
+          '',
+          'event: response.completed',
+          'data: {"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":"ignored"}]}]},"url":"https://example.com/hot","title":"热点来源"}',
+          '',
+          'data: [DONE]',
+        ].join('\n'),
+    } as never);
+
+    const result = await new VolcengineModelClient(credentials()).webSearch({
+      query: '今天有什么热点新闻？',
+      maxKeyword: 2,
+    });
+
+    expect(result.text).toBe('{"summary":"热梗补充"}');
+    expect(result.citations).toEqual([
+      expect.objectContaining({ title: '热点来源', url: 'https://example.com/hot' }),
+    ]);
+    const [url, init] = vi.mocked(fetch).mock.calls[0] ?? [];
+    expect(url).toBe('https://ark.invalid/responses');
+    const request = JSON.parse((init as { body?: string } | undefined)?.body ?? '{}') as {
+      model?: string;
+      stream?: boolean;
+      tools?: Array<{ type?: string; max_keyword?: number }>;
+    };
+    expect(request).toMatchObject({
+      model: 'doubao-seed-2-0-pro-260215',
+      stream: true,
+      tools: [{ type: 'web_search', max_keyword: 2 }],
+    });
+  });
+
   it('rejects overlong TTS text before the network request', async () => {
     await expect(
       new VolcengineModelClient(credentials()).tts('测'.repeat(1001), 'zh_female_vv_uranus_bigtts'),

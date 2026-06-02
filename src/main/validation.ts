@@ -3,12 +3,16 @@ import { existsSync } from 'node:fs';
 import { AppError } from './errors.js';
 import {
   DEFAULT_VIDEO_RESOLUTION,
+  COPYWRITING_SCRIPT_FORMAT_DEFINITIONS,
   PRETRAILER_VIDEO_TYPE_DEFINITIONS,
   VIDEO_RESOLUTION_OPTIONS,
   normalizePretrailerStyle,
 } from '../shared/types.js';
 import type {
   AvatarInput,
+  CopywritingIndustry,
+  CopywritingInput,
+  CopywritingScriptFormat,
   CreateTaskRequest,
   ExplosionInput,
   NativeIndustry,
@@ -27,6 +31,9 @@ const NATIVE_INDUSTRIES: readonly NativeIndustry[] = [
   'ecommerce',
 ];
 const NATIVE_RATIOS: readonly NativeRatio[] = ['9:16', '16:9', '1:1'];
+const COPYWRITING_FORMATS: readonly CopywritingScriptFormat[] =
+  COPYWRITING_SCRIPT_FORMAT_DEFINITIONS.map((definition) => definition.value);
+const COPYWRITING_INDUSTRIES: readonly CopywritingIndustry[] = ['auto', ...NATIVE_INDUSTRIES];
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -204,6 +211,67 @@ function validateNative(input: unknown): NativeInput {
   };
 }
 
+function optionalTrimmedString(input: Record<string, unknown>, field: string, maxLength: number): string | undefined {
+  const value = input[field];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (normalized.length > maxLength) {
+    throw new AppError('E_INPUT_VALIDATION', `${field} 不能超过 ${maxLength} 字`);
+  }
+  return normalized;
+}
+
+function validateCopywriting(input: unknown): CopywritingInput {
+  if (!isRecord(input)) {
+    throw new AppError('E_INPUT_VALIDATION', '广告文案脚本输入格式错误');
+  }
+  const requirement = requireString(input.requirement, '文案需求');
+  if (requirement.length < 10 || requirement.length > 4000) {
+    throw new AppError('E_INPUT_VALIDATION', '文案需求需在 10..4000 字');
+  }
+  const productName = optionalTrimmedString(input, 'productName', 100);
+  const audience = optionalTrimmedString(input, 'audience', 200);
+  const platform = optionalTrimmedString(input, 'platform', 80);
+  const industry = input.industry ?? 'auto';
+  if (
+    typeof industry !== 'string' ||
+    !COPYWRITING_INDUSTRIES.includes(industry as CopywritingIndustry)
+  ) {
+    throw new AppError('E_INPUT_VALIDATION', '广告文案行业模板不支持');
+  }
+  const format = input.format;
+  if (
+    typeof format !== 'string' ||
+    !COPYWRITING_FORMATS.includes(format as CopywritingScriptFormat)
+  ) {
+    throw new AppError('E_INPUT_VALIDATION', '广告文案脚本形式不支持');
+  }
+  const variantCount = Math.trunc(requireNumber(input.variantCount ?? 3, '脚本数量'));
+  if (variantCount < 1 || variantCount > 5) {
+    throw new AppError('E_INPUT_VALIDATION', '脚本数量必须在 1..5');
+  }
+  const durationSec = Math.trunc(requireNumber(input.durationSec ?? 30, '目标时长'));
+  if (durationSec < 15 || durationSec > 120) {
+    throw new AppError('E_INPUT_VALIDATION', '目标时长必须在 15..120 秒');
+  }
+  if (input.enableWebSearch !== undefined && typeof input.enableWebSearch !== 'boolean') {
+    throw new AppError('E_INPUT_VALIDATION', '联网补充开关必须是布尔值');
+  }
+  return {
+    industry: industry as CopywritingIndustry,
+    requirement,
+    ...(productName !== undefined ? { productName } : {}),
+    ...(audience !== undefined ? { audience } : {}),
+    ...(platform !== undefined ? { platform } : {}),
+    format: format as CopywritingScriptFormat,
+    variantCount,
+    durationSec,
+    enableWebSearch: input.enableWebSearch !== false,
+  };
+}
+
 export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskRequest {
   if (!isRecord(req)) {
     throw new AppError('E_INPUT_VALIDATION', '任务参数格式错误');
@@ -219,6 +287,9 @@ export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskReq
   }
   if (req.type === 'native') {
     return { type: 'native', input: validateNative(req.input) };
+  }
+  if (req.type === 'copywriting') {
+    return { type: 'copywriting', input: validateCopywriting(req.input) };
   }
   throw new AppError('E_INPUT_VALIDATION', '任务类型不支持');
 }

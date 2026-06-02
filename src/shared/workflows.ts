@@ -1,6 +1,6 @@
 import type { NativeIndustry, TaskType } from './types.js';
 
-export const WORKFLOW_PROMPT_TEMPLATE_VERSION = '2026-05-30-seedance-router-v1';
+export const WORKFLOW_PROMPT_TEMPLATE_VERSION = '2026-06-02-copywriting-web-search-v1';
 
 export interface NativeIndustryDefinition {
   id: NativeIndustry;
@@ -111,13 +111,13 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '生成新脚本并拆成可用于视频生成的分镜。',
     variables: ['variantCount', 'ctaKeywords', 'transcriptText', 'scriptParseJson'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}基于原视频理解、原文案与分镜裂变 {variantCount} 条。${AD_CREATIVE_STRUCTURE_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}${REFERENCE_POLICY_PROMPT}${SEEDANCE_SINGLE_CALL_DURATION_PROMPT}先生成完整新脚本，再把脚本拆成可用于视频生成的 storyboard。每条变体必须复用原片高转化结构，但更换钩子、场景或利益点表达，避免同质化。每个 visualPrompt 必须写成 Seedance 友好的视觉锚点、行为状态、局部调性和广告目的，不要堆叠低价值摄影参数。每个分镜如有口播或对白，必须把可 TTS 合成的文本写入 narration；同时按声音匹配输出 voiceGender:"male|female"，男声用于男性角色/男声旁白，女声用于女性角色/女声旁白；无口播则 narration 为空。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}必须保留 CTA 关键词：{ctaKeywords}\n只输出 JSON 数组，每项包含 {"index":1,"strategy":"shot_replace|avatar_replace|product_shot_replace|pretrailer_add|hot_opening_reuse|remix","copy":"...","script":"...","preserve":["结构/节奏/转化触发点"],"replace":["非核心画面/人物/场景/利益点表达"],"differenceTarget":"画面差异目标","variantReason":"该变体的差异化理由","storyboard":[{"index":1,"durationSec":4,"visualPrompt":"...","narration":"可 TTS 合成的口播或对白，没有则为空","voiceGender":"male|female","transition":"...","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"..."}]}。\n原文案：{transcriptText}\n原片拆解：{scriptParseJson}`,
+      `${PRIVATE_REASONING_PROMPT}基于原视频理解、原文案与分镜裂变 {variantCount} 条。${AD_CREATIVE_STRUCTURE_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}${REFERENCE_POLICY_PROMPT}${SEEDANCE_SINGLE_CALL_DURATION_PROMPT}先生成完整新脚本，再把脚本拆成可用于视频生成的 storyboard。每条变体必须复用原片高转化结构，但更换钩子、场景或利益点表达，避免同质化。每个 visualPrompt 必须写成 Seedance 友好的视觉锚点、行为状态、局部调性和广告目的，不要堆叠低价值摄影参数。每个分镜如有口播、对白或字幕意图，写入 narration 供脚本文案确认与视频生成参考；不要为爆款裂变设计单独的外部 TTS 音频。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}必须保留 CTA 关键词：{ctaKeywords}\n只输出 JSON 数组，每项包含 {"index":1,"strategy":"shot_replace|avatar_replace|product_shot_replace|pretrailer_add|hot_opening_reuse|remix","copy":"...","script":"...","preserve":["结构/节奏/转化触发点"],"replace":["非核心画面/人物/场景/利益点表达"],"differenceTarget":"画面差异目标","variantReason":"该变体的差异化理由","storyboard":[{"index":1,"durationSec":4,"visualPrompt":"...","narration":"口播、对白或字幕意图，没有则为空","transition":"...","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"..."}]}。\n原文案：{transcriptText}\n原片拆解：{scriptParseJson}`,
   },
   'explosion.seedance': {
     title: '视频生成',
     description: '把裂变脚本和分镜组装成 Seedance 视频生成 Prompt。',
     variables: ['copy', 'script', 'storyboard', 'referencePolicy'],
-    defaultPrompt: `${SEEDANCE_VC_ROUTER_PROMPT}${SEEDANCE_PROMPT_CARD_PROMPT}\n裂变文案：{copy}\n\n完整脚本：{script}\n\n按以下分镜生成视频：\n{storyboard}\n\n参考素材使用方式：{referencePolicy}\n\n若请求中包含 reference_audio，则该音频是本分镜口播/对白的硬约束，画面动作、口型、情绪和节奏必须贴合音频；不要在画面内生成字幕、花字或额外可读文字来替代口播。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}`,
+    defaultPrompt: `${SEEDANCE_VC_ROUTER_PROMPT}${SEEDANCE_PROMPT_CARD_PROMPT}\n裂变文案：{copy}\n\n完整脚本：{script}\n\n按以下分镜生成视频：\n{storyboard}\n\n参考素材使用方式：{referencePolicy}\n\n爆款裂变视频由 Seedance 直接生成最终音画效果，不额外传入 reference_audio，不在本地做语音合成或音频替换。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}`,
   },
   'pretrailer.understand': {
     title: '视频理解',
@@ -131,20 +131,20 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '生成 1 秒内有钩子的广告前贴文案。',
     variables: ['pretrailerDuration', 'videoType', 'style', 'visualStyle'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}生成 {pretrailerDuration}s 广告前贴，视频生成类型：{videoType}。类型提示词模板：{style}必须把原片产品、场景、人物、色调、构图、镜头语言和光线质感融合进文案创意：{visualStyle}。${AD_CREATIVE_STRUCTURE_PROMPT}${PRETRAILER_CREATIVE_STRATEGY_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}要求协调但差异化，1 秒内出现核心钩子，钩子必须能被画面直接表达。先内部比较不同 hook 方向，正文只输出 JSON：{"candidates":[{"hookType":"conflict|contrast|pain|spectacle|spoken_question","text":"...","hookAtSec":0.5,"firstSecondVisual":"首秒画面钩子","reason":"适合原因","riskNote":"合规风险规避说明"}],"selectedIndex":1,"text":"最终前贴文案","hookAtSec":0.5,"hookVisual":"最终首秒画面钩子","riskNote":"最终风险规避说明"}。`,
+      `${PRIVATE_REASONING_PROMPT}生成 {pretrailerDuration}s 广告前贴，视频生成类型：{videoType}。类型提示词模板：{style}必须把原片产品、场景、人物、色调、构图、镜头语言和光线质感融合进文案创意：{visualStyle}。前贴声音由视频生成模型直接生成，不再单独生成本地 TTS 口播音频；text 是给视频生成参考的钩子文案/声音意图，必须能被画面直接表达。${AD_CREATIVE_STRUCTURE_PROMPT}${PRETRAILER_CREATIVE_STRATEGY_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}要求协调但差异化，1 秒内出现核心钩子。先内部比较不同 hook 方向，正文只输出 JSON：{"candidates":[{"hookType":"conflict|contrast|pain|spectacle|spoken_question","text":"...","hookAtSec":0.5,"firstSecondVisual":"首秒画面钩子","reason":"适合原因","riskNote":"合规风险规避说明"}],"selectedIndex":1,"text":"最终前贴钩子文案或声音意图","hookAtSec":0.5,"hookVisual":"最终首秒画面钩子","riskNote":"最终风险规避说明"}。`,
   },
   'pretrailer.script_gen': {
     title: '前贴分镜',
     description: '把前贴文案拆成短镜头脚本。',
-    variables: ['pretrailerDuration', 'copyText', 'understandingJson'],
+    variables: ['pretrailerDuration', 'copyText', 'understandingJson', 'videoType', 'style'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}为 {pretrailerDuration}s 广告前贴生成分镜。后续视频生成接口单次 durationSec 使用 {pretrailerDuration}s，必须保持在 4-15 秒范围内；shots.durationSec 仅表达镜头节奏，首镜头必须 <=1 秒，并承担停留钩子。${AD_CREATIVE_STRUCTURE_PROMPT}${PRETRAILER_CREATIVE_STRATEGY_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}每个镜头 prompt 必须写清楚产品、场景、人物、动作、色调、光线质感、情绪、前后景层次和节奏，并自然继承原片理解中的视觉元素；不使用原片关键帧作为生成参考。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}文案：{copyText}。原片理解：{understandingJson}。只输出 JSON：{"firstSecondVisual":"0-1s 视觉钩子","transitionPlan":"前贴如何接原片","endingFramePrompt":"末帧衔接描述","shots":[{"index":1,"durationSec":1,"prompt":"...","visualAnchor":"...","behaviorState":"...","localTone":"...","videoTheme":"..."}]}。`,
+      `${PRIVATE_REASONING_PROMPT}为 {pretrailerDuration}s 广告前贴生成分镜。视频生成类型：{videoType}。类型提示词模板：{style}分镜必须把该类型落实为可拍/可生成的画面机制，首镜头就体现类型特征；例如巨物/微型前贴必须明确巨物或微型主体、真实环境参照物、尺度反差和轻喜剧动作，ASMR 前贴必须明确切割/压碎/爆开对象、近景细节和感官声音线索。前贴声音由视频生成模型直接生成，不再单独生成本地 TTS 口播音频；如需要对白、音效或旁白，只把它写进镜头 prompt 作为音画同步意图。后续视频生成接口单次 durationSec 使用 {pretrailerDuration}s，必须保持在 4-15 秒范围内；shots.durationSec 仅表达镜头节奏，首镜头必须 <=1 秒，并承担停留钩子。${AD_CREATIVE_STRUCTURE_PROMPT}${PRETRAILER_CREATIVE_STRATEGY_PROMPT}${SEEDANCE_VC_ROUTER_PROMPT}每个镜头 prompt 必须写清楚产品、场景、人物、动作、色调、光线质感、情绪、前后景层次、节奏、声音意图，以及该前贴类型的视觉锚点；自然继承原片理解中的视觉元素；不使用原片关键帧作为生成参考。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}文案：{copyText}。原片理解：{understandingJson}。只输出 JSON：{"firstSecondVisual":"0-1s 视觉钩子，必须体现所选前贴类型","transitionPlan":"前贴如何接原片","endingFramePrompt":"末帧衔接描述","shots":[{"index":1,"durationSec":1,"prompt":"必须体现所选前贴类型的画面描述，可包含视频生成内置声音意图","visualAnchor":"类型视觉锚点","behaviorState":"动作状态","localTone":"局部调性","videoTheme":"前贴类型与广告目的"}]}。`,
   },
   'pretrailer.seedance': {
     title: '前贴生成',
     description: '把前贴分镜传给视频生成模型。',
     variables: ['scriptJson', 'referencePolicy'],
-    defaultPrompt: `${SEEDANCE_VC_ROUTER_PROMPT}${SEEDANCE_PROMPT_CARD_PROMPT}\n前贴分镜 JSON：{scriptJson}\n\n参考素材使用方式：{referencePolicy}\n\n要求首帧必须强钩子，末帧必须能自然接原片。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}`,
+    defaultPrompt: `${SEEDANCE_VC_ROUTER_PROMPT}${SEEDANCE_PROMPT_CARD_PROMPT}\n前贴分镜 JSON：{scriptJson}\n\n参考素材使用方式：{referencePolicy}\n\n要求首帧必须强钩子，末帧必须能自然接原片。前贴声音、音效、对白或旁白由视频生成模型直接生成，不额外传入本地 TTS 音频。${VIDEO_COMPOSITION_PROMPT}${SEEDANCE_DIRECTOR_PROMPT}${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}`,
   },
   'avatar.validate_avatar': {
     title: '数字人校验',
@@ -185,6 +185,41 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '控制数字人口播的视频生成风格。',
     variables: [],
     defaultPrompt: `${SEEDANCE_VC_ROUTER_PROMPT}基于参考音频驱动数字人口播，音频、唇形、人物一致性是硬约束，不要过度 Vibe 改写。保持正面清晰构图、自然唇形、可信表情、轻微手势、稳定眼神和干净广告背景；可按单人出镜、产品贴片、画中画、桌面讲解组织画面。${REFERENCE_POLICY_PROMPT}${VIDEO_COMPOSITION_PROMPT}`,
+  },
+  'copywriting.template_optimize': {
+    title: '模板优化',
+    description: '把匹配到的行业模板优化成当前需求的脚本生成策略。',
+    variables: ['industryTitle', 'formula', 'durationRange', 'requiredModules', 'complianceFocus', 'requirement', 'productName', 'audience', 'platform', 'format', 'durationSec', 'variantCount'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}你将接收一个已匹配的广告行业模板，请结合用户需求把它优化成“广告文案脚本编写 Agent”的任务专用模板。先在内部判断行业匹配度、用户真实意图、可复用公式、需要增删的模块、合规边界和脚本输出形态，不要输出推理链。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}${AD_QUALITY_RUBRIC_PROMPT}匹配行业：{industryTitle}\n行业公式：{formula}\n行业建议时长：{durationRange}\n行业必备模块：{requiredModules}\n合规重点：{complianceFocus}\n用户需求：{requirement}\n产品名称：{productName}\n目标人群：{audience}\n投放平台：{platform}\n脚本形式：{format}\n目标时长：{durationSec}s\n输出数量：{variantCount}\n只输出 JSON：{"industryFit":"high|medium|low","templateName":"...","optimizedFormula":"当前需求下的脚本公式","mustUseModules":["..."],"optionalModules":["..."],"angleLibrary":["痛点设问","场景反差","证据背书"],"writingRules":["..."],"complianceRules":["..."],"riskNotes":["..."],"agentPlan":["需求拆解重点","策略分析重点","脚本生成重点"]}。`,
+  },
+  'copywriting.web_research': {
+    title: '联网补充',
+    description: '用 Ark Responses web_search 补充产品相关信息、用户关注点和热梗语境。',
+    variables: ['industryTitle', 'optimizedTemplateJson', 'requirement', 'productName', 'audience', 'platform', 'format'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}请联网检索并总结广告文案脚本生成可用的信息，重点补充产品相关信息、竞品/同类表达、用户关注点、近期热点语境和可安全借用的热梗。不要编造来源，不要输出推理链；热梗只保留适合商业广告且不过时、不冒犯、不侵权的表达。行业：{industryTitle}\n优化模板：{optimizedTemplateJson}\n用户需求：{requirement}\n产品名称：{productName}\n目标人群：{audience}\n投放平台：{platform}\n脚本形式：{format}\n只输出 JSON：{"summary":"联网补充摘要","productInsights":["产品或同类品类信息"],"trendInsights":["热点/平台语境"],"memeInsights":["可安全借用的热梗表达"],"riskNotes":["需规避的过时、侵权或不实表达"]}。`,
+  },
+  'copywriting.requirement_decompose': {
+    title: '需求拆解',
+    description: '基于优化后的行业模板拆解产品、人群、卖点、约束和创意角度。',
+    variables: ['industryTemplateJson', 'optimizedTemplateJson', 'researchJson', 'requirement', 'productName', 'audience', 'platform', 'format', 'durationSec', 'variantCount'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}请基于已匹配行业模板、优化模板和联网补充拆解广告文案脚本需求，先在内部判断产品类别、目标人群、真实痛点、可证明卖点、转化目标、平台语境和合规风险，不要输出推理链。联网补充只能作为辅助线索，不得把未验证信息写成确定事实。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}行业模板：{industryTemplateJson}\n优化模板：{optimizedTemplateJson}\n联网补充：{researchJson}\n输入需求：{requirement}\n产品名称：{productName}\n目标人群：{audience}\n投放平台：{platform}\n脚本形式：{format}\n目标时长：{durationSec}s\n输出数量：{variantCount}\n只输出 JSON：{"product":{"name":"...","category":"...","coreValue":"..."},"audience":{"segment":"...","painPoints":["..."],"desires":["..."],"objections":["..."]},"offer":{"sellingPoints":["..."],"proofPoints":["..."],"ctaGoal":"..."},"constraints":{"platform":"...","format":"...","durationSec":30,"mustInclude":["..."],"avoid":["..."],"riskNotes":["..."]},"creativeAngles":["痛点设问","场景反差","证据背书"],"templateApplications":["行业公式如何落到本需求"]}。`,
+  },
+  'copywriting.strategy_analysis': {
+    title: '策略分析',
+    description: '基于优化模板和需求拆解选择爆款钩子、转化路径和脚本结构。',
+    variables: ['requirement', 'optimizedTemplateJson', 'researchJson', 'decompositionJson'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}基于优化后的行业模板、联网补充和需求拆解做广告策略分析。请在内部深度比较不同钩子、情绪杠杆、证据路径、热梗适配度、风险表达和转化节奏，不输出推理链；正文只给可执行策略 JSON。热梗必须服务卖点，不要硬蹭热点。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_QUALITY_RUBRIC_PROMPT}原始需求：{requirement}\n优化模板：{optimizedTemplateJson}\n联网补充：{researchJson}\n需求拆解：{decompositionJson}\n只输出 JSON：{"positioning":"一句话定位","audienceInsight":"人群洞察","selectedTemplateLogic":"采用该行业模板的核心原因","hookStrategies":[{"name":"...","firstSecond":"首秒钩子或首句","whyItWorks":"有效原因","riskControl":"风险规避"}],"conversionPath":["停留","兴趣","信任","行动"],"tone":"语气风格","proofStrategy":["可用证据或场景背书"],"scriptBlueprint":{"opening":"...","middle":"...","proof":"...","cta":"..."},"qualityChecklist":["首秒明确","卖点可证明","CTA自然"]}。`,
+  },
+  'copywriting.script_writer': {
+    title: '爆款脚本',
+    description: '输出可直接预览和复用的爆款广告脚本。',
+    variables: ['optimizedTemplateJson', 'researchJson', 'decompositionJson', 'analysisJson', 'variantCount', 'durationSec', 'format'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}请根据优化行业模板、联网补充、需求拆解和策略分析，输出 {variantCount} 条可投放方向不同的爆款广告脚本，目标时长 {durationSec}s，脚本形式 {format}。不要输出推理链；每条脚本必须遵守优化模板中的公式、模块和合规规则，并有强钩子、痛点/欲望、卖点、证据或场景背书、自然 CTA。可使用联网补充里的产品信息和热梗，但必须自然、不过时、不冒犯、不声称未经验证的事实。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}短视频脚本要给出 timeSec beats 和可拍画面建议；信息流文案要给出标题、正文和按钮建议；直播口播要给出节奏段落和逼单点。优化模板：{optimizedTemplateJson}\n联网补充：{researchJson}\n需求拆解：{decompositionJson}\n策略分析：{analysisJson}\n只输出 JSON：{"scripts":[{"index":1,"title":"...","angle":"差异化角度","templateLogic":"本条如何使用行业模板","hook":"首句/首秒钩子","script":"完整脚本文案","voiceover":"可口播文本","visualNotes":["画面建议或卡片元素"],"beats":[{"timeSec":0,"text":"首秒钩子","intent":"停留"},{"timeSec":3,"text":"卖点","intent":"兴趣"}],"cta":"...","riskControl":"..."}],"summary":"整体投放建议"}。`,
   },
   'native.concept_plan': {
     title: '行业概念规划',
@@ -266,8 +301,7 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
       { id: 'rewrite', title: '裂变改写', description: '生成新脚本并拆成 storyboard。', artifact: 'variants.json', promptIds: ['explosion.rewrite'] },
       { id: 'script_confirm', title: '脚本文案确认', description: '人工确认裂变脚本和分镜文案后继续生成。', artifact: 'variants.md', promptIds: [] },
       { id: 'video_prompt_optimize', title: '视频提示词优化', description: '把裂变脚本、分镜和参考策略整理为 Seedance 最终提示词。', artifact: 'video_prompts.json', promptIds: ['explosion.seedance'] },
-      { id: 'seedance', title: '视频生成', description: '按优化后的提示词生成无音轨视频。', artifact: 'variant_<i>.mp4', promptIds: [] },
-      { id: 'audio_replace', title: '音频替换', description: '复用原音频生成最终视频。', artifact: 'final_<i>.mp4', promptIds: [] },
+      { id: 'seedance', title: '视频生成', description: '按优化后的提示词生成直出成片。', artifact: 'variant_<i>.mp4', promptIds: [] },
     ],
   },
   pretrailer: {
@@ -281,9 +315,7 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
       { id: 'script_gen', title: '前贴分镜', description: '把前贴文案拆成短分镜。', artifact: 'script.json', promptIds: ['pretrailer.script_gen'] },
       { id: 'script_confirm', title: '脚本文案确认', description: '人工确认前贴文案和分镜后继续生成。', artifact: 'script.json', promptIds: [] },
       { id: 'video_prompt_optimize', title: '视频提示词优化', description: '把前贴分镜和衔接策略整理为 Seedance 最终提示词。', artifact: 'video_prompts.json', promptIds: ['pretrailer.seedance'] },
-      { id: 'seedance', title: '前贴生成', description: '按优化后的提示词生成无音轨前贴视频。', artifact: 'pretrailer.mp4', promptIds: [] },
-      { id: 'tts', title: '语音合成', description: '合成前贴口播音频。', artifact: 'pretrailer.m4a', promptIds: [] },
-      { id: 'mux_pretrailer', title: '前贴合成', description: '合并前贴音视频。', artifact: 'pretrailer_av.mp4', promptIds: [] },
+      { id: 'seedance', title: '前贴生成', description: '按优化后的提示词直接生成带声音的前贴视频。', artifact: 'pretrailer.mp4', promptIds: [] },
       { id: 'concat', title: '成片拼接', description: '把前贴拼接到原广告前。', artifact: 'final.mp4', promptIds: [] },
     ],
   },
@@ -302,6 +334,19 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
       { id: 'seedance_avatar', title: '数字人生成', description: '用音频和优化后的提示词驱动数字人口播视频。', artifact: 'avatar.mp4', promptIds: [] },
       { id: 'overlay', title: '素材叠加', description: '按时间轴叠加产品图。', artifact: 'final.mp4', promptIds: [] },
       { id: 'postprocess', title: '成片处理', description: '入库最终视频。', artifact: 'final.mp4', promptIds: [] },
+    ],
+  },
+  copywriting: {
+    type: 'copywriting',
+    title: '广告文案脚本编写',
+    description: '输入需求后先匹配行业模板，再优化模板、拆解需求并输出爆款广告脚本。',
+    nodes: [
+      { id: 'industry_router', title: '行业模板路由', description: '从六行业模板中匹配最适合的文案脚本模板。', artifact: 'industry.json', promptIds: [] },
+      { id: 'template_optimize', title: '模板优化', description: '用大模型把行业模板优化成当前需求的专用策略。', artifact: 'template.json', promptIds: ['copywriting.template_optimize'] },
+      { id: 'web_research', title: '联网补充', description: '补充产品相关信息、用户关注点和热梗语境。', artifact: 'research.json', promptIds: ['copywriting.web_research'] },
+      { id: 'requirement_decompose', title: '需求拆解', description: '基于优化模板拆解产品、人群、卖点、平台和约束。', artifact: 'requirement.json', promptIds: ['copywriting.requirement_decompose'] },
+      { id: 'strategy_analysis', title: '策略分析', description: '选择钩子、转化路径和爆款脚本结构。', artifact: 'analysis.json', promptIds: ['copywriting.strategy_analysis'] },
+      { id: 'script_writer', title: '爆款脚本', description: '生成多条可投放脚本并入库为文案素材。', artifact: 'scripts.md', promptIds: ['copywriting.script_writer'] },
     ],
   },
   native: {

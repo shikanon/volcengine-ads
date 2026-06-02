@@ -74,6 +74,10 @@ class AvatarMockModelClient implements ModelClient {
     throw new Error('chat should not be called');
   }
 
+  async webSearch(): Promise<never> {
+    throw new Error('webSearch should not be called');
+  }
+
   async vision(): Promise<string> {
     throw new Error('vision should not be called');
   }

@@ -25,13 +25,13 @@ function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
-async function createSilentVideo(outputPath: string): Promise<void> {
+async function createSilentVideo(outputPath: string, size = '64x64'): Promise<void> {
   await runFfmpeg([
     '-y',
     '-f',
     'lavfi',
     '-i',
-    'testsrc=size=64x64:rate=10:duration=0.5',
+    `testsrc=size=${size}:rate=10:duration=0.5`,
     '-an',
     '-c:v',
     'libx264',
@@ -41,13 +41,13 @@ async function createSilentVideo(outputPath: string): Promise<void> {
   ]);
 }
 
-async function createVideoWithAudio(outputPath: string): Promise<void> {
+async function createVideoWithAudio(outputPath: string, size = '64x64'): Promise<void> {
   await runFfmpeg([
     '-y',
     '-f',
     'lavfi',
     '-i',
-    'testsrc=size=64x64:rate=10:duration=0.5',
+    `testsrc=size=${size}:rate=10:duration=0.5`,
     '-f',
     'lavfi',
     '-i',
@@ -96,6 +96,20 @@ describe('ffmpeg audio-tolerant video composition', () => {
     const outputPath = join(dir, 'fade.mp4');
     await createVideoWithAudio(pretrailerPath);
     await createSilentVideo(sourcePath);
+
+    await expect(
+      concatWithFade(pretrailerPath, sourcePath, outputPath, { firstDurationSec: 0.5 }),
+    ).resolves.toBe(outputPath);
+    await expect(access(outputPath)).resolves.toBeUndefined();
+  });
+
+  it('fades videos after normalizing mismatched segment dimensions', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ffmpeg-video-size-fade-'));
+    const pretrailerPath = join(dir, 'pretrailer.mp4');
+    const sourcePath = join(dir, 'source.mp4');
+    const outputPath = join(dir, 'fade.mp4');
+    await createVideoWithAudio(pretrailerPath, '96x160');
+    await createVideoWithAudio(sourcePath, '128x224');
 
     await expect(
       concatWithFade(pretrailerPath, sourcePath, outputPath, { firstDurationSec: 0.5 }),

@@ -28,11 +28,24 @@
 9. `consistency_checker`：写入 `consistency.json`
 10. `composer`：写入 `finals.json` 并入库成片
 
+广告文案脚本编写使用 `copywriting` 任务类型，是与原生广告生成、爆款广告裂变、广告前贴、数字人口播并列的一级模块。它面向“输入需求 → 匹配行业模板 → 大模型优化模板 → 联网补充产品/热点信息 → 拆解需求 → 深度策略分析 → 输出爆款广告脚本”的复杂 Agent 工作流，不进入视频/音频生成节点：
+
+1. `industry_router`：写入 `industry.json`，从六行业模板中匹配最适合的行业模板；用户选择具体行业时按选择路由，选择 `auto` 时根据需求文本自动匹配。
+2. `template_optimize`：写入 `template.json`，使用大模型把匹配到的行业模板优化为当前需求专用的脚本公式、模块、角度库和合规规则；模型可使用高 reasoning effort，但不得输出推理链。
+3. `web_research`：写入 `research.json`，通过 `ModelClient.webSearch` 调用 Ark Responses `web_search` 工具补充产品相关信息、用户关注点、平台热点和可安全借用的热梗；pipeline 不得直接外呼网络。
+4. `requirement_decompose`：写入 `requirement.json`，基于优化后的行业模板和联网补充拆解产品、人群、卖点、平台语境、限制条件和创意角度。
+5. `strategy_analysis`：写入 `analysis.json`，基于优化模板、联网补充和拆解结果进行钩子、转化路径、证据背书、语气和风险规避分析。
+6. `script_writer`：写入 `scripts.json` 和可预览的 `scripts.md`，输出多条爆款广告脚本，并以 `script` 素材类型登记到素材库。
+
 广告爆款裂变、原生爆款素材生成、广告前贴生成、广告数字人口播都必须在脚本文案生成后、视频/音频生成前进入 `script_confirm` 确认环节。确认节点不调用模型，仅复用上游脚本文案产物供用户预览；任务状态为 `waiting_confirmation` 时，用户确认后通过 `task:confirm-script` 将该节点标记为 `success` 并恢复排队继续执行。
 
 所有工作流在视频生成类节点前必须进入 `video_prompt_optimize` 节点。该节点产出可直接传给 Seedance / 数字人生成接口的最终视频提示词 artifact；后续 `seedance`、`asset_generator`、`seedance_avatar` 节点必须优先读取该 artifact 发起视频生成。
 
-广告爆款裂变的 `video_prompt_optimize` 还必须把每个分镜片段中的口播或对白文本按男女声匹配火山 TTS 音色合成为片段参考音频，写入 `video_prompts.json`；单段 TTS 参考音频必须与对应 Seedance 片段一样控制在 4..15s 内。`seedance` 节点调用视频生成时必须同时传入最终提示词、参考视频和该分段 TTS 音频；若参考视频被模型拒绝并降级为无参考生成，不得只传 TTS 音频，必须降级为纯文本生成。若某条裂变素材使用了 TTS 参考音频，最终 `audio_replace` 不得再用原片音频覆盖：Seedance 已实际使用 TTS 音频时保留模型生成音频；Seedance 降级为纯文本生成时，必须把 `video_prompts.json` 中的分段 TTS 拼接为最终音轨后替换到成片中。
+广告爆款裂变不再执行本地语音合成和音频替换。`video_prompt_optimize` 仅整理裂变脚本、分镜和参考素材策略，不生成或写入 TTS 参考音频；`seedance` 节点不传 `reference_audio`，Seedance 直出视频即最终成片并直接入库。
+
+广告前贴的用户所选视频生成类型必须同时约束 `copy_gen` 和 `script_gen` 节点。`copy_gen` 用类型模板生成符合方向的前贴文案；`script_gen` 必须继续接收同一个类型模板，并把类型落实到每个镜头的视觉锚点、尺度/动作/场景机制和首秒钩子中，例如“巨物/微型前贴”要明确巨物或微型主体、真实环境参照物、尺度反差和轻喜剧动作。
+
+广告前贴不再执行本地语音合成和前贴音视频合成节点。`seedance` 节点必须直接生成带声音的前贴视频；`copy_gen` 和 `script_gen` 产物只作为脚本文案确认和视频生成提示词，不再作为本地 TTS 口播输入。`concat` 节点直接拼接 `pretrailer.mp4` 与 `source.mp4`。
 
 广告爆款裂变、原生爆款素材生成、广告前贴生成、广告数字人口播都必须支持 `resolution` 生成分辨率选项：`480p | 720p | 1080p`。未显式选择时默认 `720p`；该值必须作为视频生成或数字人生成请求的 `resolution` 参数传给模型。
 
@@ -40,7 +53,7 @@
 
 - 所有名为“视频理解”或承担原片视觉理解职责的节点，必须把完整视频文件直接输入大语言模型的视频理解接口（`ModelClient.visionVideo(videoPath, prompt)`）。
 - 禁止在视频理解阶段把视频抽帧成图片后调用图片理解接口；不再生成或依赖 `keyframes/`、`understand_frames/` 等关键帧目录。
-- 允许为 ASR、音频替换、FFmpeg 合成等非理解场景单独提取音频；允许为视频生成参考单独裁剪参考视频，但这些产物不得替代视频理解输入。
+- 允许为 ASR、FFmpeg 合成等非理解场景单独提取音频；允许为视频生成参考单独裁剪参考视频，但这些产物不得替代视频理解输入。广告爆款裂变不再为了成片执行音频替换。
 - 产品设计上，“视频理解”节点展示为完整视频理解：输入为规范化后的 `source.mp4`，输出为结构化 JSON（如 `understanding.json` 或 `script_parse.json`），用于后续文案、分镜和一致性判断。
 
 
@@ -73,6 +86,27 @@ interface NativeInput {
   resolution?: VideoResolution; // default: 720p
 }
 ```
+
+## 5.2 `copywriting` 输入契约
+
+```typescript
+type CopywritingScriptFormat = 'short_video' | 'feed_ad' | 'live_stream';
+type CopywritingIndustry = NativeIndustry | 'auto';
+
+interface CopywritingInput {
+  industry: CopywritingIndustry; // default: auto
+  requirement: string; // 10..4000
+  productName?: string; // <= 100
+  audience?: string; // <= 200
+  platform?: string; // <= 80
+  format: CopywritingScriptFormat;
+  variantCount: number; // 1..5
+  durationSec: number; // 15..120
+  enableWebSearch?: boolean; // default: true，是否用 Ark web_search 补充产品信息和热梗
+}
+```
+
+`copywriting` 不生成视频、音频或图片，因此不要求 `script_confirm`，也不要求 `video_prompt_optimize`。最终 `scripts.md` 是用户可直接复用、可在任务详情和素材库中定位的脚本文案产物。
 
 
 ## 4. IPC 通信契约（强类型）
