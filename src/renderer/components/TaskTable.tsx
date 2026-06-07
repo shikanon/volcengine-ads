@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { App, Button, Empty, Modal, Popconfirm, Progress, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import {
   CheckCircleOutlined,
@@ -117,6 +117,10 @@ interface ArtifactPreview {
   truncated: boolean;
 }
 
+interface RecordValue {
+  [key: string]: unknown;
+}
+
 const PREVIEWABLE_EXTENSIONS = new Set(['csv', 'json', 'log', 'md', 'srt', 'txt', 'vtt']);
 
 function formatTime(value?: number): string {
@@ -161,11 +165,360 @@ function formatTaskInput(task: TaskRecord): string {
   return JSON.stringify(task.input, null, 2);
 }
 
+function isRecord(value: unknown): value is RecordValue {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown, fallback = '未提供'): string {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim());
+}
+
+function readRecordArray(value: unknown): RecordValue[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord);
+}
+
+function parseJsonPreview(content: string): unknown | undefined {
+  try {
+    return JSON.parse(content) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 function findWaitingScriptStep(task: TaskRecord): TaskStep | undefined {
   return (
     task.steps.find((step) => step.step === 'script_confirm' && step.status === 'waiting_confirmation') ??
     task.steps.find((step) => step.status === 'waiting_confirmation')
   );
+}
+
+function VisualSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="copywriting-visual-section">
+      <Typography.Text strong>{title}</Typography.Text>
+      {children}
+    </section>
+  );
+}
+
+function VisualMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | undefined;
+}) {
+  return (
+    <div className="copywriting-visual-metric">
+      <span>{label}</span>
+      <strong>{value ?? '未提供'}</strong>
+    </div>
+  );
+}
+
+function ChipList({ items, empty = '未提供' }: { items: string[]; empty?: string }) {
+  if (items.length === 0) {
+    return <Typography.Text className="copywriting-empty">{empty}</Typography.Text>;
+  }
+  return (
+    <div className="copywriting-chip-list">
+      {items.map((item) => (
+        <Tag key={item} className="copywriting-chip">
+          {item}
+        </Tag>
+      ))}
+    </div>
+  );
+}
+
+function TextList({ items, empty = '未提供' }: { items: string[]; empty?: string }) {
+  if (items.length === 0) {
+    return <Typography.Text className="copywriting-empty">{empty}</Typography.Text>;
+  }
+  return (
+    <ul className="copywriting-text-list">
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function renderCopywritingIndustry(data: RecordValue) {
+  return (
+    <>
+      <div className="copywriting-visual-hero">
+        <div>
+          <span>行业模板</span>
+          <strong>{readString(data.title)}</strong>
+        </div>
+        <Tag className="copywriting-mode-tag">
+          {readString(data.matchMode) === 'manual' ? '手动选择' : '智能匹配'}
+        </Tag>
+      </div>
+      <div className="copywriting-visual-grid">
+        <VisualMetric label="匹配分" value={readNumber(data.score)} />
+        <VisualMetric label="建议时长" value={readString(data.durationRange)} />
+        <VisualMetric label="合规重点" value={readString(data.complianceFocus)} />
+      </div>
+      <VisualSection title="行业公式">
+        <p>{readString(data.formula)}</p>
+      </VisualSection>
+      <VisualSection title="必备模块">
+        <ChipList items={readStringArray(data.requiredModules)} />
+      </VisualSection>
+      <VisualSection title="命中关键词">
+        <ChipList items={readStringArray(data.matchedKeywords)} empty="未命中关键词，使用默认行业模板" />
+      </VisualSection>
+    </>
+  );
+}
+
+function renderCopywritingTemplate(data: RecordValue) {
+  return (
+    <>
+      <div className="copywriting-visual-hero">
+        <div>
+          <span>优化模板</span>
+          <strong>{readString(data.templateName)}</strong>
+        </div>
+        <Tag className="copywriting-mode-tag">匹配度 {readString(data.industryFit)}</Tag>
+      </div>
+      <VisualSection title="优化公式">
+        <p>{readString(data.optimizedFormula)}</p>
+      </VisualSection>
+      <div className="copywriting-visual-grid">
+        <VisualSection title="必用模块">
+          <ChipList items={readStringArray(data.mustUseModules)} />
+        </VisualSection>
+        <VisualSection title="创意角度库">
+          <ChipList items={readStringArray(data.angleLibrary)} />
+        </VisualSection>
+      </div>
+      <div className="copywriting-visual-grid two">
+        <VisualSection title="写作规则">
+          <TextList items={readStringArray(data.writingRules)} />
+        </VisualSection>
+        <VisualSection title="合规规则">
+          <TextList items={readStringArray(data.complianceRules)} />
+        </VisualSection>
+      </div>
+    </>
+  );
+}
+
+function renderCopywritingResearch(data: RecordValue) {
+  const citations = readRecordArray(data.citations);
+  const enabled = typeof data.enabled === 'boolean' ? data.enabled : false;
+  return (
+    <>
+      <div className="copywriting-visual-hero">
+        <div>
+          <span>联网补充</span>
+          <strong>{enabled ? '已启用' : '未启用'}</strong>
+        </div>
+        <Tag className="copywriting-mode-tag">{citations.length} 来源</Tag>
+      </div>
+      <VisualSection title="摘要">
+        <p>{readString(data.summary)}</p>
+      </VisualSection>
+      <div className="copywriting-visual-grid">
+        <VisualSection title="产品/品类线索">
+          <TextList items={readStringArray(data.productInsights)} />
+        </VisualSection>
+        <VisualSection title="热点语境">
+          <TextList items={readStringArray(data.trendInsights)} />
+        </VisualSection>
+        <VisualSection title="可用热梗">
+          <TextList items={readStringArray(data.memeInsights)} />
+        </VisualSection>
+      </div>
+      {citations.length > 0 ? (
+        <VisualSection title="参考来源">
+          <div className="copywriting-citation-list">
+            {citations.slice(0, 6).map((citation, index) => {
+              const url = readString(citation.url, '');
+              const title = readString(citation.title, url || `来源 ${index + 1}`);
+              return (
+                <a key={`${url}-${index}`} href={url} target="_blank" rel="noreferrer">
+                  {title}
+                </a>
+              );
+            })}
+          </div>
+        </VisualSection>
+      ) : null}
+    </>
+  );
+}
+
+function renderCopywritingRequirement(data: RecordValue) {
+  const product = isRecord(data.product) ? data.product : {};
+  const audience = isRecord(data.audience) ? data.audience : {};
+  const offer = isRecord(data.offer) ? data.offer : {};
+  const constraints = isRecord(data.constraints) ? data.constraints : {};
+  return (
+    <>
+      <div className="copywriting-visual-hero">
+        <div>
+          <span>需求拆解</span>
+          <strong>{readString(product.name)}</strong>
+        </div>
+        <Tag className="copywriting-mode-tag">{readString(product.category)}</Tag>
+      </div>
+      <VisualSection title="核心价值">
+        <p>{readString(product.coreValue)}</p>
+      </VisualSection>
+      <div className="copywriting-visual-grid two">
+        <VisualSection title="目标人群">
+          <p>{readString(audience.segment)}</p>
+          <TextList items={readStringArray(audience.painPoints)} empty="未提供痛点" />
+        </VisualSection>
+        <VisualSection title="卖点与证据">
+          <ChipList items={readStringArray(offer.sellingPoints)} />
+          <TextList items={readStringArray(offer.proofPoints)} empty="未提供证据点" />
+        </VisualSection>
+      </div>
+      <VisualSection title="创意角度">
+        <ChipList items={readStringArray(data.creativeAngles)} />
+      </VisualSection>
+      <div className="copywriting-visual-grid">
+        <VisualMetric label="平台" value={readString(constraints.platform)} />
+        <VisualMetric label="形式" value={readString(constraints.format)} />
+        <VisualMetric label="时长" value={readNumber(constraints.durationSec)} />
+      </div>
+    </>
+  );
+}
+
+function renderCopywritingAnalysis(data: RecordValue) {
+  const hookStrategies = readRecordArray(data.hookStrategies);
+  const blueprint = isRecord(data.scriptBlueprint) ? data.scriptBlueprint : {};
+  return (
+    <>
+      <div className="copywriting-visual-hero">
+        <div>
+          <span>策略分析</span>
+          <strong>{readString(data.positioning)}</strong>
+        </div>
+        <Tag className="copywriting-mode-tag">{readString(data.tone)}</Tag>
+      </div>
+      <VisualSection title="人群洞察">
+        <p>{readString(data.audienceInsight)}</p>
+      </VisualSection>
+      <VisualSection title="转化路径">
+        <div className="copywriting-flow">
+          {readStringArray(data.conversionPath).map((item, index) => (
+            <div key={`${item}-${index}`} className="copywriting-flow-step">
+              <span>{index + 1}</span>
+              <strong>{item}</strong>
+            </div>
+          ))}
+        </div>
+      </VisualSection>
+      <VisualSection title="钩子策略">
+        <div className="copywriting-hook-list">
+          {hookStrategies.map((hook, index) => (
+            <div key={`${readString(hook.name)}-${index}`} className="copywriting-hook-card">
+              <strong>{readString(hook.name)}</strong>
+              <p>{readString(hook.firstSecond)}</p>
+              <span>{readString(hook.whyItWorks)}</span>
+            </div>
+          ))}
+        </div>
+      </VisualSection>
+      <div className="copywriting-visual-grid two">
+        <VisualSection title="脚本蓝图">
+          <TextList
+            items={[
+              readString(blueprint.opening, ''),
+              readString(blueprint.middle, ''),
+              readString(blueprint.proof, ''),
+              readString(blueprint.cta, ''),
+            ].filter((item) => item.length > 0)}
+          />
+        </VisualSection>
+        <VisualSection title="质量检查">
+          <TextList items={readStringArray(data.qualityChecklist)} />
+        </VisualSection>
+      </div>
+    </>
+  );
+}
+
+function renderCopywritingScripts(data: RecordValue) {
+  const scripts = readRecordArray(data.scripts);
+  return (
+    <>
+      <div className="copywriting-visual-hero">
+        <div>
+          <span>脚本方案</span>
+          <strong>{scripts.length} 条脚本</strong>
+        </div>
+        <Tag className="copywriting-mode-tag">可投放</Tag>
+      </div>
+      <div className="copywriting-script-list">
+        {scripts.map((script, index) => (
+          <section key={`${readString(script.title)}-${index}`} className="copywriting-script-card">
+            <div>
+              <span>{readNumber(script.index) ?? index + 1}</span>
+              <strong>{readString(script.title)}</strong>
+            </div>
+            <p>{readString(script.hook)}</p>
+            <Typography.Text>{readString(script.script)}</Typography.Text>
+            <Tag className="copywriting-mode-tag">{readString(script.angle)}</Tag>
+          </section>
+        ))}
+      </div>
+      {typeof data.summary === 'string' ? (
+        <VisualSection title="投放建议">
+          <p>{data.summary}</p>
+        </VisualSection>
+      ) : null}
+    </>
+  );
+}
+
+function CopywritingVisualPreview({ step, content }: { step: TaskStep; content: string }) {
+  const data = parseJsonPreview(content);
+  if (!isRecord(data)) {
+    return null;
+  }
+  const renderers: Record<string, (value: RecordValue) => ReactNode> = {
+    industry_router: renderCopywritingIndustry,
+    template_optimize: renderCopywritingTemplate,
+    web_research: renderCopywritingResearch,
+    requirement_decompose: renderCopywritingRequirement,
+    strategy_analysis: renderCopywritingAnalysis,
+    script_writer: renderCopywritingScripts,
+  };
+  const render = renderers[step.step];
+  if (!render) {
+    return null;
+  }
+  return <div className="copywriting-visual">{render(data)}</div>;
 }
 
 function TaskStatusCell({ task }: { task: TaskRecord }) {
@@ -181,7 +534,7 @@ function TaskStatusCell({ task }: { task: TaskRecord }) {
   );
 }
 
-function StepOutput({ step }: { step: TaskStep }) {
+function StepOutput({ task, step }: { task: TaskRecord; step: TaskStep }) {
   const { message } = App.useApp();
   const [preview, setPreview] = useState<ArtifactPreview>();
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -429,6 +782,9 @@ function StepOutput({ step }: { step: TaskStep }) {
                 文件较大，仅展示前 512KB 内容。
               </Typography.Text>
             ) : null}
+            {task.type === 'copywriting' && getExtension(preview.path) === 'json' ? (
+              <CopywritingVisualPreview step={step} content={preview.content} />
+            ) : null}
             <pre className="artifact-preview">{preview.content}</pre>
           </div>
         ) : null}
@@ -599,7 +955,7 @@ function WorkflowSteps({
           },
           {
             title: '输出',
-            render: (_, step) => <StepOutput step={step} />,
+            render: (_, step) => <StepOutput task={task} step={step} />,
           },
           {
             title: '时间',

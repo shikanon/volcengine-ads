@@ -1000,6 +1000,173 @@ body,
   word-break: break-word;
 }
 
+.copywriting-visual {
+  display: grid;
+  gap: var(--space-md);
+  max-height: 52vh;
+  overflow: auto;
+  padding: var(--space-md);
+  border: 1px solid color-mix(in oklch, var(--accent) 34%, transparent);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--accent) 12%, transparent), transparent 44%),
+    color-mix(in oklch, var(--surface-raised) 76%, transparent);
+  box-shadow: var(--shadow-control);
+}
+
+.copywriting-visual-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.copywriting-visual-hero > div {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.copywriting-visual-hero span,
+.copywriting-visual-section > span,
+.copywriting-visual-metric span,
+.copywriting-empty {
+  color: var(--text-muted);
+  font-size: var(--type-caption);
+}
+
+.copywriting-visual-hero strong {
+  color: var(--text-strong);
+  font-size: var(--type-title-sm);
+  line-height: var(--leading-tight);
+}
+
+.copywriting-mode-tag,
+.copywriting-chip {
+  margin: 0;
+  border-color: color-mix(in oklch, var(--accent) 42%, transparent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  color: var(--text-main);
+}
+
+.copywriting-visual-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-sm);
+}
+
+.copywriting-visual-grid.two {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.copywriting-visual-section,
+.copywriting-visual-metric,
+.copywriting-hook-card,
+.copywriting-script-card {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-sm);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-panel) 72%, transparent);
+}
+
+.copywriting-visual-section p,
+.copywriting-hook-card p,
+.copywriting-script-card p {
+  margin: 0;
+  color: var(--text-main);
+  line-height: var(--leading-prose);
+}
+
+.copywriting-visual-metric strong,
+.copywriting-visual-section > strong,
+.copywriting-hook-card strong,
+.copywriting-script-card strong {
+  color: var(--text-strong);
+  line-height: var(--leading-tight);
+}
+
+.copywriting-chip-list,
+.copywriting-citation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.copywriting-text-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--text-main);
+}
+
+.copywriting-citation-list a {
+  max-width: 100%;
+  padding: 0.25rem 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copywriting-flow,
+.copywriting-hook-list,
+.copywriting-script-list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.copywriting-flow {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.copywriting-flow-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.copywriting-flow-step span,
+.copywriting-script-card > div span {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.copywriting-flow-step strong {
+  min-width: 0;
+  color: var(--text-strong);
+}
+
+.copywriting-hook-card span,
+.copywriting-script-card .ant-typography {
+  color: var(--text-muted);
+  font-size: var(--type-caption);
+  line-height: var(--leading-prose);
+}
+
+.copywriting-script-card > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
 .script-confirm-panel {
   display: grid;
   gap: var(--space-sm);
