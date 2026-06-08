@@ -11,6 +11,7 @@ import {
   AppstoreOutlined,
   ApartmentOutlined,
   ClockCircleOutlined,
+  DownloadOutlined,
   FileTextOutlined,
   HomeOutlined,
   PlayCircleOutlined,
@@ -27,6 +28,7 @@ import { Avatar } from './pages/Avatar.js';
 import { Copywriting } from './pages/Copywriting.js';
 import { Explosion } from './pages/Explosion.js';
 import { Home } from './pages/Home.js';
+import { LarkDownload } from './pages/LarkDownload.js';
 import { Native } from './pages/Native.js';
 import { Pretrailer } from './pages/Pretrailer.js';
 import { Settings } from './pages/Settings.js';
@@ -40,6 +42,7 @@ type PageKey =
   | 'copywriting'
   | 'pretrailer'
   | 'avatar'
+  | 'lark_download'
   | 'workflows'
   | 'assets'
   | 'settings';
@@ -51,6 +54,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
   copywriting: '广告文案脚本',
   pretrailer: '广告前贴',
   avatar: '数字人口播',
+  lark_download: '飞书视频下载',
   workflows: '工作流',
   assets: '素材库',
   settings: '设置',
@@ -63,6 +67,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
   copywriting: '需求拆解到爆款脚本',
   pretrailer: '原片到开场钩子',
   avatar: '品牌资料到口播视频',
+  lark_download: '飞书文档到本地视频',
   workflows: '节点逻辑与 Prompt 调试',
   assets: '生成结果与本地文件',
   settings: '模型、存储与本地安全',
@@ -75,6 +80,7 @@ const NAV_ITEMS: Array<{ key: PageKey; icon: ReactNode; label: string }> = [
   { key: 'native', icon: <RocketOutlined />, label: '原生爆款素材生成' },
   { key: 'pretrailer', icon: <PlayCircleOutlined />, label: '广告吸引前贴生成' },
   { key: 'avatar', icon: <UserOutlined />, label: '广告数字人口播' },
+  { key: 'lark_download', icon: <DownloadOutlined />, label: '飞书视频下载' },
   { key: 'workflows', icon: <ApartmentOutlined />, label: '工作流' },
   { key: 'assets', icon: <AppstoreOutlined />, label: '素材库' },
   { key: 'settings', icon: <SettingOutlined />, label: '设置' },
@@ -100,6 +106,7 @@ export function App() {
     if (page === 'copywriting') return <Copywriting />;
     if (page === 'pretrailer') return <Pretrailer />;
     if (page === 'avatar') return <Avatar />;
+    if (page === 'lark_download') return <LarkDownload />;
     if (page === 'workflows') return <Workflows />;
     if (page === 'assets') return <Assets />;
     if (page === 'settings') return <Settings />;

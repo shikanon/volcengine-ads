@@ -3,6 +3,7 @@ import type { PipelineDefinition } from './types.js';
 import { avatarPipeline } from './avatar/index.js';
 import { copywritingPipeline } from './copywriting/index.js';
 import { explosionPipeline } from './explosion/index.js';
+import { larkDownloadPipeline } from './lark-download/index.js';
 import { nativePipeline } from './native/index.js';
 import { pretrailerPipeline } from './pretrailer/index.js';
 
@@ -12,6 +13,7 @@ const PIPELINES: Record<TaskType, PipelineDefinition> = {
   avatar: avatarPipeline,
   native: nativePipeline,
   copywriting: copywritingPipeline,
+  lark_download: larkDownloadPipeline,
 };
 
 export function getPipeline(type: TaskType): PipelineDefinition {

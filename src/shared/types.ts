@@ -1,6 +1,12 @@
 import type { WorkflowPromptOverrides } from './workflows.js';
 
-export type TaskType = 'explosion' | 'pretrailer' | 'avatar' | 'native' | 'copywriting';
+export type TaskType =
+  | 'explosion'
+  | 'pretrailer'
+  | 'avatar'
+  | 'native'
+  | 'copywriting'
+  | 'lark_download';
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -23,6 +29,7 @@ export type NativeRatio = '9:16' | '16:9' | '1:1';
 export type VideoResolution = '480p' | '720p' | '1080p';
 export type CopywritingScriptFormat = 'short_video' | 'feed_ad' | 'live_stream';
 export type CopywritingIndustry = NativeIndustry | 'auto';
+export type LarkDocumentType = 'wiki' | 'docx';
 
 export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = '720p';
 
@@ -74,7 +81,13 @@ export interface TaskRecord {
   type: TaskType;
   status: TaskStatus;
   progress: number;
-  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput | CopywritingInput;
+  input:
+    | ExplosionInput
+    | PretrailerInput
+    | AvatarInput
+    | NativeInput
+    | CopywritingInput
+    | LarkDownloadInput;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -229,6 +242,44 @@ export interface CopywritingInput {
   enableWebSearch?: boolean;
 }
 
+export interface LarkDownloadInput {
+  url: string;
+  outputDir?: string;
+}
+
+export interface LarkDownloadSuccessItem {
+  fileToken: string;
+  mountNodeToken: string;
+  name: string;
+  path: string;
+  size: number;
+  mimeType?: string;
+  fileType?: string;
+  quality: string;
+  skipped: boolean;
+}
+
+export interface LarkDownloadFailureItem {
+  fileToken: string;
+  mountNodeToken: string;
+  name: string;
+  reason: string;
+}
+
+export interface LarkDownloadSummary {
+  sourceUrl: string;
+  sourceType: LarkDocumentType;
+  sourceToken: string;
+  outputDir: string;
+  discovered: number;
+  successCount: number;
+  failureCount: number;
+  loginRequired: boolean;
+  loginHint?: string;
+  successes: LarkDownloadSuccessItem[];
+  failures: LarkDownloadFailureItem[];
+}
+
 export interface AssetRecord {
   id: string;
   taskId?: string;
@@ -316,7 +367,13 @@ export interface TaskProgressEvent {
 
 export interface CreateTaskRequest {
   type: TaskType;
-  input: ExplosionInput | PretrailerInput | AvatarInput | NativeInput | CopywritingInput;
+  input:
+    | ExplosionInput
+    | PretrailerInput
+    | AvatarInput
+    | NativeInput
+    | CopywritingInput
+    | LarkDownloadInput;
 }
 
 export interface RetryStepRequest {

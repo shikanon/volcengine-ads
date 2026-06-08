@@ -3,11 +3,28 @@ import PQueue from 'p-queue';
 import { AppError } from '../errors.js';
 import { getPipeline, getStepNames } from '../pipelines/index.js';
 import { runPipeline, type ProgressEmitter } from '../pipelines/runner.js';
-import type { ModelClientFactory } from '../model-client/index.js';
+import type { ModelClient, ModelClientFactory } from '../model-client/index.js';
 import type { TaskRepository } from '../db/index.js';
 import { validateCreateTaskRequest } from '../validation.js';
 import type { CreateTaskRequest, RetryStepRequest, TaskRecord } from '../../shared/types.js';
 import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
+
+function createNoopModelClient(): ModelClient {
+  const unsupported = async (): Promise<never> => {
+    throw new AppError('E_TASK_STATE', '当前任务不需要模型服务');
+  };
+  return {
+    generateImage: unsupported,
+    generateVideo: unsupported,
+    generateDigitalHuman: unsupported,
+    asr: unsupported,
+    tts: unsupported,
+    chat: unsupported,
+    webSearch: unsupported,
+    vision: unsupported,
+    visionVideo: unsupported,
+  };
+}
 
 export class TaskWorker {
   private readonly queue: PQueue;
@@ -112,7 +129,10 @@ export class TaskWorker {
       this.activeTaskIds.add(taskId);
       try {
         const pipeline = getPipeline(task.type);
-        const modelClient = await this.modelClientFactory.create();
+        const modelClient =
+          task.type === 'lark_download'
+            ? createNoopModelClient()
+            : await this.modelClientFactory.create();
         const workflowPrompts = this.loadWorkflowPrompts();
         await runPipeline({
           task,

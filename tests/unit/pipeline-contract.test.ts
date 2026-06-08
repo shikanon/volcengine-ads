@@ -86,6 +86,10 @@ describe('pipeline step contracts', () => {
     ]);
   });
 
+  it('keeps lark download steps aligned with integrate-feishu-video-download spec', () => {
+    expect(getStepNames('lark_download')).toEqual(['download']);
+  });
+
   it('keeps composition guidance in video generation meta prompts', () => {
     const prompts = getDefaultWorkflowPrompts();
     const videoPromptIds: WorkflowPromptId[] = [

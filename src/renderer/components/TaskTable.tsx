@@ -21,6 +21,7 @@ const TASK_TYPE_LABEL: Record<TaskType, string> = {
   avatar: '数字人口播',
   native: '原生爆款',
   copywriting: '文案脚本',
+  lark_download: '飞书下载',
 };
 
 const TASK_STATUS_LABEL: Record<TaskRecord['status'], string> = {
@@ -97,6 +98,9 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     requirement_decompose: '需求拆解',
     strategy_analysis: '策略分析',
     script_writer: '爆款脚本',
+  },
+  lark_download: {
+    download: '视频下载',
   },
 };
 

@@ -4,6 +4,7 @@ import type {
   AvatarInput,
   CopywritingInput,
   ExplosionInput,
+  LarkDownloadInput,
   NativeInput,
   PretrailerInput,
   TaskProgressEvent,
@@ -25,7 +26,8 @@ export type PipelineInput =
   | PretrailerInput
   | AvatarInput
   | NativeInput
-  | CopywritingInput;
+  | CopywritingInput
+  | LarkDownloadInput;
 
 export interface StepContext<TInput = PipelineInput> {
   task: TaskRecord;

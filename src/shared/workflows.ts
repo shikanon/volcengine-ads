@@ -349,6 +349,20 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
       { id: 'script_writer', title: '爆款脚本', description: '生成多条可投放脚本并入库为文案素材。', artifact: 'scripts.md', promptIds: ['copywriting.script_writer'] },
     ],
   },
+  lark_download: {
+    type: 'lark_download',
+    title: '飞书视频下载',
+    description: '从飞书 wiki/docx 页面发现视频块并下载到任务产物目录或自定义输出目录。',
+    nodes: [
+      {
+        id: 'download',
+        title: '视频下载',
+        description: '复用页面会话、发现视频块并输出 download-summary.json。',
+        artifact: 'download-summary.json',
+        promptIds: [],
+      },
+    ],
+  },
   native: {
     type: 'native',
     title: '原生爆款广告素材生成',

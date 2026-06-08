@@ -246,4 +246,56 @@ describe('validateCreateTaskRequest', () => {
 
     expect(() => validateCreateTaskRequest(request)).toThrow(AppError);
   });
+
+  it('accepts lark download input with optional absolute output directory', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'lark_download',
+        input: {
+          url: 'https://bytedance.larkoffice.com/wiki/WutgwjNvxienAqkVmwfc1sMZnqe',
+          outputDir: '/tmp/lark-downloads',
+        },
+      }),
+    ).toEqual({
+      type: 'lark_download',
+      input: {
+        url: 'https://bytedance.larkoffice.com/wiki/WutgwjNvxienAqkVmwfc1sMZnqe',
+        outputDir: '/tmp/lark-downloads',
+      },
+    });
+  });
+
+  it('rejects non-lark download url', () => {
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'lark_download',
+        input: {
+          url: 'https://example.com/wiki/demo',
+        },
+      }),
+    ).toThrow(AppError);
+  });
+
+  it('rejects blank lark download url', () => {
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'lark_download',
+        input: {
+          url: '   ',
+        },
+      }),
+    ).toThrow(AppError);
+  });
+
+  it('rejects relative lark download output directory', () => {
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'lark_download',
+        input: {
+          url: 'https://bytedance.larkoffice.com/docx/abc123',
+          outputDir: 'relative/path',
+        },
+      }),
+    ).toThrow(AppError);
+  });
 });

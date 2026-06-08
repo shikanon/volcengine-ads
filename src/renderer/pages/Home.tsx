@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Typography } from 'antd';
 import {
+  DownloadOutlined,
   FileTextOutlined,
   PlayCircleOutlined,
   RocketOutlined,
@@ -13,7 +14,7 @@ import { useTasksStore } from '../stores/tasks-store.js';
 import type { TaskStatus } from '../../shared/types.js';
 
 interface HomeProps {
-  onNavigate(page: 'explosion' | 'native' | 'copywriting' | 'pretrailer' | 'avatar'): void;
+  onNavigate(page: 'explosion' | 'native' | 'copywriting' | 'pretrailer' | 'avatar' | 'lark_download'): void;
 }
 
 type QueueFilter = 'all' | TaskStatus | 'needs_attention';
@@ -53,6 +54,13 @@ const WORKFLOW_LAUNCHERS = [
     title: '数字人口播',
     description: '从品牌资料和商品图生成数字人口播广告。',
     meta: '品牌讲解',
+  },
+  {
+    key: 'lark_download',
+    icon: <DownloadOutlined />,
+    title: '飞书视频下载',
+    description: '输入飞书文档链接，解析并下载文档中的视频到本地。',
+    meta: '任务化下载',
   },
 ] as const;
 

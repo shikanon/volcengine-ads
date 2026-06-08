@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 
 import { AppError } from './errors.js';
+import { parseLarkDocumentUrl } from './services/lark-download-helpers.js';
 import {
   DEFAULT_VIDEO_RESOLUTION,
   COPYWRITING_SCRIPT_FORMAT_DEFINITIONS,
@@ -15,6 +17,7 @@ import type {
   CopywritingScriptFormat,
   CreateTaskRequest,
   ExplosionInput,
+  LarkDownloadInput,
   NativeIndustry,
   NativeInput,
   NativeRatio,
@@ -272,6 +275,27 @@ function validateCopywriting(input: unknown): CopywritingInput {
   };
 }
 
+function validateLarkDownload(input: unknown): LarkDownloadInput {
+  if (!isRecord(input)) {
+    throw new AppError('E_INPUT_VALIDATION', '飞书下载输入格式错误');
+  }
+  const url = requireString(input.url, '飞书链接');
+  parseLarkDocumentUrl(url);
+
+  const outputDir =
+    typeof input.outputDir === 'string' && input.outputDir.trim().length > 0
+      ? input.outputDir.trim()
+      : undefined;
+  if (input.outputDir !== undefined && outputDir === undefined) {
+    throw new AppError('E_INPUT_VALIDATION', '输出目录不能为空字符串');
+  }
+  if (outputDir !== undefined && !isAbsolute(outputDir)) {
+    throw new AppError('E_INPUT_VALIDATION', '输出目录必须是绝对路径');
+  }
+
+  return outputDir !== undefined ? { url, outputDir } : { url };
+}
+
 export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskRequest {
   if (!isRecord(req)) {
     throw new AppError('E_INPUT_VALIDATION', '任务参数格式错误');
@@ -290,6 +314,9 @@ export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskReq
   }
   if (req.type === 'copywriting') {
     return { type: 'copywriting', input: validateCopywriting(req.input) };
+  }
+  if (req.type === 'lark_download') {
+    return { type: 'lark_download', input: validateLarkDownload(req.input) };
   }
   throw new AppError('E_INPUT_VALIDATION', '任务类型不支持');
 }
