@@ -172,6 +172,19 @@ export async function transcodeAudioToMp3(inputPath: string, outputPath: string)
   return outputPath;
 }
 
+export async function transcodeAudioToWav(inputPath: string, outputPath: string): Promise<string> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  await run(
+    ffmpeg(inputPath)
+      .audioCodec('pcm_s16le')
+      .audioChannels(1)
+      .audioFrequency(44100)
+      .format('wav')
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
 export async function trimAudio(inputPath: string, outputPath: string, durationSec: number): Promise<string> {
   await mkdir(dirname(outputPath), { recursive: true });
   await run(

@@ -1,6 +1,7 @@
 import { Button, Form, Input, InputNumber, Radio, Select, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
+import { SelectedAssetList } from '../components/SelectedAssetList.js';
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
 import {
@@ -21,6 +22,7 @@ interface FormValues {
 
 export function Pretrailer() {
   const [form] = Form.useForm<FormValues>();
+  const sourceVideoPath = Form.useWatch('sourceVideoPath', form);
   const createTask = useTasksStore((state) => state.createTask);
 
   async function pickVideo() {
@@ -59,7 +61,7 @@ export function Pretrailer() {
           <Form.Item label="原广告视频" required>
             <Space.Compact className="full-width">
               <Form.Item name="sourceVideoPath" noStyle rules={[{ required: true }]}>
-                <Input readOnly />
+                <Input readOnly placeholder="选择原广告视频后将在下方显示" />
               </Form.Item>
               <Button
                 type="default"
@@ -69,6 +71,7 @@ export function Pretrailer() {
                 onClick={() => void pickVideo()}
               />
             </Space.Compact>
+            <SelectedAssetList label="已选择原广告视频" paths={sourceVideoPath ? [sourceVideoPath] : []} />
           </Form.Item>
           <Form.Item name="pretrailerDuration" label="前贴时长">
             <InputNumber min={5} max={10} className="number-input" />

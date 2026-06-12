@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { SqliteTaskRepository } from '../../src/main/db/index.js';
 import { AppError } from '../../src/main/errors.js';
@@ -69,5 +69,53 @@ describe('pipeline logging', () => {
       code: 'E_INPUT_VALIDATION',
       errorType: '输入参数不合法',
     });
+  });
+
+  it('emits artifactPath and logs when a step succeeds', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'pipeline-progress-'));
+    const repository = new SqliteTaskRepository(join(userDataPath, 'app.db'));
+    const pipeline: PipelineDefinition<ExplosionInput> = {
+      type: 'explosion',
+      steps: [
+        {
+          name: 'success_step',
+          async runStep() {
+            return {
+              artifactPath: join(userDataPath, 'artifacts', 'demo.json'),
+              logs: '节点输出已就绪',
+            };
+          },
+        },
+      ],
+    };
+    const task = repository.createTask({
+      request: {
+        type: 'explosion',
+        input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 1 },
+      },
+      stepNames: pipeline.steps.map((step) => step.name),
+    });
+    const emitProgress = vi.fn();
+
+    await runPipeline({
+      task,
+      pipeline,
+      repository,
+      modelClient: {} as ModelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress,
+    });
+
+    expect(emitProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        status: 'running',
+        step: 'success_step',
+        refreshOutputs: true,
+        artifactPath: join(userDataPath, 'artifacts', 'demo.json'),
+        logs: '节点输出已就绪',
+      }),
+    );
   });
 });

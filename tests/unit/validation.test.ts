@@ -112,10 +112,16 @@ describe('validateCreateTaskRequest', () => {
     }
   });
 
-  it('accepts native industry generation input with an optional reference video', () => {
+  it('accepts native industry generation input with optional reference assets', () => {
     const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
     const referenceVideoPath = join(dir, 'reference.mp4');
+    const referenceImagePath1 = join(dir, 'reference-1.png');
+    const referenceImagePath2 = join(dir, 'reference-2.jpg');
+    const referenceAudioPath = join(dir, 'reference.wav');
     writeFileSync(referenceVideoPath, 'video');
+    writeFileSync(referenceImagePath1, 'image');
+    writeFileSync(referenceImagePath2, 'image');
+    writeFileSync(referenceAudioPath, 'audio');
 
     expect(
       validateCreateTaskRequest({
@@ -125,6 +131,8 @@ describe('validateCreateTaskRequest', () => {
           brief: '面向 AI 健康 APP 的新年营销短视频，突出每日健康提醒和轻量记录。',
           productName: 'AI 健康 APP',
           referenceVideoPath,
+          referenceImagePaths: [referenceImagePath1, referenceImagePath2],
+          referenceAudioPath,
           variantCount: 2,
           durationSec: 15,
           ratio: '9:16',
@@ -137,6 +145,8 @@ describe('validateCreateTaskRequest', () => {
         brief: '面向 AI 健康 APP 的新年营销短视频，突出每日健康提醒和轻量记录。',
         productName: 'AI 健康 APP',
         referenceVideoPath,
+        referenceImagePaths: [referenceImagePath1, referenceImagePath2],
+        referenceAudioPath,
         variantCount: 2,
         durationSec: 15,
         ratio: '9:16',
@@ -158,6 +168,29 @@ describe('validateCreateTaskRequest', () => {
         },
       }),
     ).toThrow(AppError);
+  });
+
+  it('rejects native reference images beyond Seedance limit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const referenceImagePaths = Array.from({ length: 10 }, (_, index) => {
+      const path = join(dir, `reference-${index}.png`);
+      writeFileSync(path, 'image');
+      return path;
+    });
+
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'native',
+        input: {
+          industry: 'tool',
+          brief: '工具类广告素材，使用多张商品图和场景图做稳定参考。',
+          referenceImagePaths,
+          variantCount: 1,
+          durationSec: 15,
+          ratio: '9:16',
+        },
+      }),
+    ).toThrowError(/参考图片最多支持 9 张/u);
   });
 
   it('accepts ecommerce native industry generation input', () => {
@@ -218,6 +251,61 @@ describe('validateCreateTaskRequest', () => {
     });
   });
 
+  it('accepts copywriting input without requirement and falls back to inferred brief', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'copywriting',
+        input: {
+          industry: 'auto',
+          productName: '轻量保温杯',
+          audience: '一线城市通勤白领',
+          platform: '抖音信息流',
+          format: 'short_video',
+          variantCount: 3,
+          durationSec: 30,
+        },
+      }),
+    ).toEqual({
+      type: 'copywriting',
+      input: {
+        industry: 'auto',
+        productName: '轻量保温杯',
+        audience: '一线城市通勤白领',
+        platform: '抖音信息流',
+        format: 'short_video',
+        variantCount: 3,
+        durationSec: 30,
+        enableWebSearch: true,
+      },
+    });
+  });
+
+  it('normalizes blank copywriting requirement to undefined', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'copywriting',
+        input: {
+          industry: 'auto',
+          requirement: '   ',
+          productName: '轻量保温杯',
+          format: 'short_video',
+          variantCount: 3,
+          durationSec: 30,
+        },
+      }),
+    ).toEqual({
+      type: 'copywriting',
+      input: {
+        industry: 'auto',
+        productName: '轻量保温杯',
+        format: 'short_video',
+        variantCount: 3,
+        durationSec: 30,
+        enableWebSearch: true,
+      },
+    });
+  });
+
   it('rejects unsupported copywriting script format', () => {
     const request = {
       type: 'copywriting',
@@ -241,6 +329,55 @@ describe('validateCreateTaskRequest', () => {
         format: 'short_video',
         variantCount: 3,
         durationSec: 30,
+      },
+    } as unknown as Parameters<typeof validateCreateTaskRequest>[0];
+
+    expect(() => validateCreateTaskRequest(request)).toThrow(AppError);
+  });
+
+  it('accepts video scoring input', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const sourceVideoPath = join(dir, 'ad.mp4');
+    writeFileSync(sourceVideoPath, 'video');
+
+    expect(
+      validateCreateTaskRequest({
+        type: 'video_scoring',
+        input: {
+          sourceVideoPath,
+          category: 'brand',
+        },
+      }),
+    ).toEqual({
+      type: 'video_scoring',
+      input: {
+        sourceVideoPath,
+        category: 'brand',
+      },
+    });
+  });
+
+  it('rejects video scoring input when video file is missing', () => {
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'video_scoring',
+        input: {
+          sourceVideoPath: '/tmp/not-found-ad.mp4',
+          category: 'brand',
+        },
+      }),
+    ).toThrow(AppError);
+  });
+
+  it('rejects unsupported video scoring category', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const sourceVideoPath = join(dir, 'ad.mp4');
+    writeFileSync(sourceVideoPath, 'video');
+    const request = {
+      type: 'video_scoring',
+      input: {
+        sourceVideoPath,
+        category: 'ugc',
       },
     } as unknown as Parameters<typeof validateCreateTaskRequest>[0];
 

@@ -114,20 +114,8 @@ class CopywritingMockModelClient implements ModelClient {
           {
             index: 1,
             title: '错过热咖啡以后',
-            angle: '早高峰痛点',
-            templateLogic: '使用电商模板的场景痛点 + 商品卖点 + CTA 结构',
-            hook: '你是不是也在地铁口错过热咖啡？',
             script:
               '早高峰不用再绕路买咖啡，把轻量保温杯放进通勤包，到办公室打开还是温热一口。',
-            voiceover:
-              '早高峰不用再绕路买咖啡，把轻量保温杯放进通勤包，到办公室打开还是温热一口。',
-            visualNotes: ['地铁口快走', '办公室开杯'],
-            beats: [
-              { timeSec: 0, text: '错过热咖啡', intent: '停留' },
-              { timeSec: 3, text: '放进通勤包', intent: '兴趣' },
-            ],
-            cta: '现在下单',
-            riskControl: '不夸大具体保温小时数',
           },
         ],
         summary: '优先测试早高峰痛点切入。',
@@ -233,6 +221,8 @@ describe('copywritingPipeline', () => {
       '错过热咖啡以后',
     );
     await expect(readFile(scriptsMarkdownPath, 'utf8')).resolves.toContain('## 联网补充');
+    await expect(readFile(scriptsMarkdownPath, 'utf8')).resolves.toContain('### 完整广告文案');
+    await expect(readFile(scriptsMarkdownPath, 'utf8')).resolves.not.toContain('### 节奏 Beats');
     expect(repository.listAssets()).toEqual([
       expect.objectContaining({
         taskId: task.id,
@@ -241,5 +231,48 @@ describe('copywritingPipeline', () => {
         tags: ['copywriting', 'ecommerce', 'short_video'],
       }),
     ]);
+  });
+
+  it('builds inferred requirement context when the user leaves requirement empty', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'copywriting-pipeline-inferred-'));
+    const repository = new SqliteTaskRepository(join(userDataPath, 'tasks.db'));
+    const modelClient = new CopywritingMockModelClient();
+    const task = repository.createTask({
+      request: {
+        type: 'copywriting',
+        input: {
+          industry: 'auto',
+          productName: '轻量保温杯',
+          audience: '一线城市通勤白领',
+          platform: '抖音信息流',
+          format: 'short_video',
+          variantCount: 1,
+          durationSec: 30,
+          enableWebSearch: true,
+        },
+      },
+      stepNames: copywritingPipeline.steps.map((step) => step.name),
+    });
+
+    await runPipeline({
+      task,
+      pipeline: copywritingPipeline,
+      repository,
+      modelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    });
+
+    const webSearchQuery = modelClient.webSearchRequests[0]?.query ?? '';
+    const templatePrompt =
+      modelClient.chatMessages[0]?.find((message) => message.role === 'user')?.content ?? '';
+    const analysisPrompt =
+      modelClient.chatMessages[2]?.find((message) => message.role === 'user')?.content ?? '';
+
+    expect(webSearchQuery).toContain('用户未填写文案需求');
+    expect(templatePrompt).toContain('用户未填写文案需求');
+    expect(analysisPrompt).toContain('联网补充：开启');
+    expect(repository.getTask(task.id)?.status).toBe('success');
   });
 });

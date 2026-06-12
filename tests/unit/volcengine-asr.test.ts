@@ -101,6 +101,46 @@ describe('VolcengineModelClient.asr', () => {
     });
   });
 
+  it('falls back to the shared speech api key when asr api key is not set', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response('20000000') as never).mockResolvedValueOnce(
+      response('20000000', {
+        result: {
+          text: '共享语音 Key 转写。',
+          utterances: [{ start_time: 0, end_time: 800, text: '共享语音 Key 转写。' }],
+        },
+      }) as never,
+    );
+
+    const client = new VolcengineModelClient({
+      ttsApiKey: 'shared-speech-key',
+      provider: {
+        seedanceBaseUrl: 'https://ark.invalid',
+        seedanceModel: 'seedance',
+        imageBaseUrl: 'https://ark.invalid',
+        imageModel: 'seedream',
+        llmBaseUrl: 'https://ark.invalid',
+        llmModel: 'doubao',
+        ttsBaseUrl: 'https://speech.invalid',
+        ttsVoice: 'voice',
+        asrBaseUrl: 'https://openspeech.bytedance.com',
+        asrResourceId: 'volc.seedasr.auc',
+        ossEndpoint: '',
+        ossBucketName: '',
+      },
+    });
+
+    await expect(client.asr('https://example.com/shared.wav')).resolves.toEqual({
+      text: '共享语音 Key 转写。',
+      segments: [{ start: 0, end: 0.8, text: '共享语音 Key 转写。' }],
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as { headers?: Record<string, string> } | undefined;
+    expect(init?.headers?.['X-Api-Key']).toBe('shared-speech-key');
+    expect(init?.headers?.['X-Api-App-Key']).toBeUndefined();
+    expect(init?.headers?.['X-Api-Access-Key']).toBeUndefined();
+  });
+
   it('uploads local audio before submitting ASR task', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'volcengine-asr-'));
     const audioPath = join(dir, 'local.mp3');

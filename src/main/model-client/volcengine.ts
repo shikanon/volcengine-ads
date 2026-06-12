@@ -123,6 +123,11 @@ function requireNonEmpty(value: string | undefined, field: string): string {
   return normalized;
 }
 
+function trimCredential(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
 function normalizeTtsSpeaker(value: string | undefined, fallback: string): string {
   const speaker = (value ?? fallback).trim();
   if (speaker === 'volcano_tts') {
@@ -838,7 +843,7 @@ export class VolcengineModelClient implements ModelClient {
 
   async asr(audioPath: string): Promise<TranscriptResult> {
     const credentials = this.credentials;
-    if (!credentials.asrApiKey && (!credentials.asrAppId || !credentials.asrToken)) {
+    if (!this.effectiveAsrApiKey() && (!credentials.asrAppId || !credentials.asrToken)) {
       throw new AppError('E_MODEL_API_FAILED', 'ASR 凭据未配置');
     }
     const normalizedAudioPath = requireNonEmpty(audioPath, 'ASR 音频');
@@ -868,14 +873,19 @@ export class VolcengineModelClient implements ModelClient {
     );
   }
 
+  private effectiveAsrApiKey(): string | undefined {
+    return trimCredential(this.credentials.asrApiKey) ?? trimCredential(this.credentials.ttsApiKey);
+  }
+
   private asrHeaders(requestId: string, includeSequence: boolean): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Api-Resource-Id': this.credentials.provider.asrResourceId,
       'X-Api-Request-Id': requestId,
     };
-    if (this.credentials.asrApiKey) {
-      headers['X-Api-Key'] = this.credentials.asrApiKey;
+    const apiKey = this.effectiveAsrApiKey();
+    if (apiKey) {
+      headers['X-Api-Key'] = apiKey;
     } else {
       headers['X-Api-App-Key'] = this.credentials.asrAppId ?? '';
       headers['X-Api-Access-Key'] = this.credentials.asrToken ?? '';

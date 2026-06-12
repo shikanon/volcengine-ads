@@ -45,32 +45,35 @@ describe('downloadLarkVideos', () => {
     vi.clearAllMocks();
 
     browserMocks.loadURL.mockResolvedValue(undefined);
-    browserMocks.executeJavaScript.mockResolvedValue([
-      JSON.stringify({
-        data: {
-          block_map: {
-            blockA: {
-              data: {
-                file: {
-                  token: 'file-a',
-                  name: 'demo/video-a.mp4',
-                  mimeType: 'video/mp4',
+    browserMocks.executeJavaScript.mockResolvedValue({
+      clientVarsSnippets: [
+        JSON.stringify({
+          data: {
+            block_map: {
+              blockA: {
+                data: {
+                  file: {
+                    token: 'file-a',
+                    name: 'demo/video-a.mp4',
+                    mimeType: 'video/mp4',
+                  },
                 },
               },
-            },
-            blockB: {
-              data: {
-                file: {
-                  token: 'file-b',
-                  name: 'video-b.mp4',
-                  mimeType: 'video/mp4',
+              blockB: {
+                data: {
+                  file: {
+                    token: 'file-b',
+                    name: 'video-b.mp4',
+                    mimeType: 'video/mp4',
+                  },
                 },
               },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ],
+      fileInfoRequestBodies: [],
+    });
     browserMocks.getCookies.mockResolvedValue([
       { name: '_csrf_token', value: 'csrf-token' },
       { name: 'session', value: 'session-cookie' },
@@ -185,4 +188,82 @@ describe('downloadLarkVideos', () => {
     },
     10000,
   );
+
+  it('falls back to captured box/file/info request bodies when client_vars has no videos', async () => {
+    browserMocks.executeJavaScript.mockResolvedValue({
+      clientVarsSnippets: [],
+      fileInfoRequestBodies: [
+        JSON.stringify({
+          file_token: 'file-c',
+          mount_node_token: 'mount-c',
+          mount_point: 'docx_file',
+        }),
+      ],
+    });
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/space/api/box/file/info/')) {
+        const body = JSON.parse(String(init?.body)) as { file_token: string; mount_node_token: string };
+        expect(body).toMatchObject({
+          file_token: 'file-c',
+          mount_node_token: 'mount-c',
+        });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            code: 0,
+            data: {
+              data_version: 'v3',
+              name: 'fallback-video.mp4',
+              mime_type: 'video/mp4',
+              type: 'video',
+              preview_meta: {
+                data: {
+                  '3': {
+                    content: {
+                      transcode_urls: {
+                        '360p': 'https://cdn.example.com/video-c-360.mp4?from=360',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        } as never;
+      }
+
+      if (url.startsWith('https://cdn.example.com/video-c-360.mp4')) {
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => toArrayBuffer('video-c'),
+        } as never;
+      }
+
+      throw new Error(`unexpected fetch request: ${url}`);
+    });
+
+    const artifactDir = mkdtempSync(join(tmpdir(), 'lark-download-fallback-'));
+    const { summary } = await downloadLarkVideos({
+      input: {
+        url: 'https://bytedance.larkoffice.com/wiki/wiki-token',
+      },
+      artifactDir,
+    });
+
+    expect(summary.discovered).toBe(1);
+    expect(summary.successCount).toBe(1);
+    expect(summary.failureCount).toBe(0);
+    expect(summary.successes).toEqual([
+      expect.objectContaining({
+        fileToken: 'file-c',
+        mountNodeToken: 'mount-c',
+        name: 'fallback-video.mp4',
+        quality: '360p',
+      }),
+    ]);
+  }, 10000);
 });

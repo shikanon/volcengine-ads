@@ -136,6 +136,7 @@ export async function runPipeline(params: {
           progress,
           step: step.name,
           message: result.awaitingConfirmation.message,
+          ...(result.logs !== undefined ? { logs: result.logs } : {}),
           ...(result.artifactPath !== undefined ? { artifactPath: result.artifactPath } : {}),
         });
         return;
@@ -154,7 +155,15 @@ export async function runPipeline(params: {
           ...(result.logs !== undefined ? { logs: result.logs } : {}),
         },
       });
-      emitProgress({ taskId: task.id, status: 'running', progress: nextProgress, step: step.name });
+      emitProgress({
+        taskId: task.id,
+        status: 'running',
+        progress: nextProgress,
+        step: step.name,
+        refreshOutputs: true,
+        ...(result.logs !== undefined ? { logs: result.logs } : {}),
+        ...(result.artifactPath !== undefined ? { artifactPath: result.artifactPath } : {}),
+      });
     } catch (error) {
       const appError = toAppError(error, 'E_MODEL_API_FAILED');
       log.error(`Pipeline step failed: task=${task.id}, step=${step.name}`, appError);

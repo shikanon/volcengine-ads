@@ -11,7 +11,7 @@ import { NATIVE_INDUSTRY_DEFINITIONS } from '../../shared/workflows.js';
 
 interface FormValues {
   industry: CopywritingIndustry;
-  requirement: string;
+  requirement?: string;
   productName?: string;
   audience?: string;
   platform?: string;
@@ -55,11 +55,12 @@ export function Copywriting() {
     industryDefinition?.formula ?? '先从游戏、短剧、小说、社交、工具、电商中匹配模板，再进入大模型优化。';
 
   async function submit(values: FormValues) {
+    const requirement = values.requirement?.trim();
     await createTask({
       type: 'copywriting',
       input: {
         industry: values.industry,
-        requirement: values.requirement,
+        ...(requirement ? { requirement } : {}),
         ...(values.productName ? { productName: values.productName } : {}),
         ...(values.audience ? { audience: values.audience } : {}),
         ...(values.platform ? { platform: values.platform } : {}),
@@ -130,11 +131,10 @@ export function Copywriting() {
           <Form.Item
             name="requirement"
             label="文案需求"
-            rules={[{ required: true, min: 10, message: '请至少输入 10 个字的需求' }]}
           >
             <Input.TextArea
               rows={8}
-              placeholder="描述产品、卖点、目标人群、禁用表达、投放场景、想要的风格或参考方向。"
+              placeholder="可选。可填写产品卖点、目标人群、禁用表达、投放场景、风格或参考方向；留空时模型会结合结构化字段与联网搜索自行推断。"
               showCount
               maxLength={4000}
             />
