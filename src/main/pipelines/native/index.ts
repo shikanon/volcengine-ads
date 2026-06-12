@@ -106,6 +106,10 @@ interface NativeAsset {
   durationSec?: number;
   segments?: NativeAssetSegment[];
   usedReferenceVideo?: boolean;
+  usedReferenceImages?: boolean;
+  usedReferenceAudio?: boolean;
+  referenceImagePaths?: string[];
+  referenceAudioPath?: string;
   completedAt?: number;
   failedAt?: number;
 }
@@ -117,7 +121,11 @@ interface NativeAssetSegment {
   durationSec: number;
   error?: string;
   usedReferenceVideo?: boolean;
+  usedReferenceImages?: boolean;
+  usedReferenceAudio?: boolean;
   referenceVideoPath?: string;
+  referenceImagePaths?: string[];
+  referenceAudioPath?: string;
   completedAt?: number;
   failedAt?: number;
 }
@@ -170,6 +178,12 @@ interface ConsistencyItem {
 
 interface ConsistencyReport {
   checks: ConsistencyItem[];
+  summary: {
+    total: number;
+    passed: number;
+    warned: number;
+    blocking: false;
+  };
 }
 
 interface StoryboardSegment {
@@ -603,6 +617,8 @@ async function runVideoPromptOptimize(ctx: StepContext<NativeInput>) {
     artifactPath(ctx.artifactDir, 'storyboard.json'),
   );
   const targetDurationSec = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec));
+  const hasReferenceImages = (ctx.input.referenceImagePaths?.length ?? 0) > 0;
+  const hasReferenceAudio = ctx.input.referenceAudioPath !== undefined;
   const promptVariants: NativeVideoPromptVariant[] = storyboard.variants.map((variant) => {
     const segments = splitVariantForSeedance(variant, targetDurationSec);
     return {
@@ -611,9 +627,13 @@ async function runVideoPromptOptimize(ctx: StepContext<NativeInput>) {
         const hasReferenceVideo = ctx.input.referenceVideoPath !== undefined || segment.index > 1;
         const referencePolicy = buildReferencePolicyText({
           hasReferenceVideo,
+          hasReferenceImages,
+          hasReferenceAudio,
           purpose: `${route.title}行业原生素材「${variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
         });
         const noReferencePolicy = buildReferencePolicyText({
+          hasReferenceImages,
+          hasReferenceAudio,
           purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
           noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
         });
@@ -666,6 +686,11 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
   const targetDurationSec = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec));
   const assetsPath = artifactPath(ctx.artifactDir, 'assets.json');
   const previousAssets = await readNativeAssetsIfExists(assetsPath);
+  const referenceImagePaths =
+    ctx.input.referenceImagePaths !== undefined && ctx.input.referenceImagePaths.length > 0
+      ? ctx.input.referenceImagePaths
+      : undefined;
+  const referenceAudioPath = ctx.input.referenceAudioPath;
   const results = new Map<number, NativeAsset>(
     previousAssets?.assets.map((asset) => [asset.index, asset]) ?? [],
   );
@@ -677,6 +702,8 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
     ratio: ctx.input.ratio,
     assetsPath,
     hasReferenceVideo: ctx.input.referenceVideoPath !== undefined,
+    hasReferenceImages: referenceImagePaths !== undefined,
+    hasReferenceAudio: referenceAudioPath !== undefined,
   });
 
   async function persistResults(): Promise<void> {
@@ -759,9 +786,13 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
               : generatedVideoPath;
           const referencePolicy = buildReferencePolicyText({
             hasReferenceVideo: nextReferencePath !== undefined,
+            hasReferenceImages: referenceImagePaths !== undefined,
+            hasReferenceAudio: referenceAudioPath !== undefined,
             purpose: `${route.title}行业原生素材「${variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
           });
           const noReferencePolicy = buildReferencePolicyText({
+            hasReferenceImages: referenceImagePaths !== undefined,
+            hasReferenceAudio: referenceAudioPath !== undefined,
             purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
             noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
           });
@@ -788,8 +819,12 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             generateAudio: true,
             outputPath: segmentPath,
             ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
+            ...(referenceImagePaths !== undefined ? { refImagePaths: referenceImagePaths } : {}),
+            ...(referenceAudioPath !== undefined ? { audioPath: referenceAudioPath } : {}),
           };
           let usedReferenceVideo = nextReferencePath !== undefined;
+          const usedReferenceImages = referenceImagePaths !== undefined;
+          const usedReferenceAudio = referenceAudioPath !== undefined;
           await ctx.appendLog?.('info', '开始调用 Seedance 生成视频片段', {
             variantIndex: variant.index,
             segmentIndex: segment.index,
@@ -799,7 +834,11 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             generateAudio: videoRequest.generateAudio,
             outputPath: segmentPath,
             hasReferenceVideo: nextReferencePath !== undefined,
+            hasReferenceImages: referenceImagePaths !== undefined,
+            hasReferenceAudio: referenceAudioPath !== undefined,
             referenceVideoPath: nextReferencePath,
+            referenceImagePaths,
+            referenceAudioPath,
           });
           try {
             await ctx.modelClient.generateVideo(videoRequest);
@@ -825,9 +864,13 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                 durationSec: segment.durationSec,
                 error: appError.message,
                 usedReferenceVideo,
+                usedReferenceImages,
+                usedReferenceAudio,
                 ...(nextReferencePath !== undefined
                   ? { referenceVideoPath: nextReferencePath }
                   : {}),
+                ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+                ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
                 failedAt: Date.now(),
               };
               generatedSegments.push(segmentFailure);
@@ -861,6 +904,8 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                 ratio: videoRequest.ratio,
                 generateAudio: true,
                 outputPath: videoRequest.outputPath,
+                ...(referenceImagePaths !== undefined ? { refImagePaths: referenceImagePaths } : {}),
+                ...(referenceAudioPath !== undefined ? { audioPath: referenceAudioPath } : {}),
               });
             } catch (fallbackError) {
               const appError = toAppError(fallbackError, 'E_MODEL_API_FAILED');
@@ -883,9 +928,13 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
                 durationSec: segment.durationSec,
                 error: `参考视频被拒后无参考重试仍失败：${appError.message}`,
                 usedReferenceVideo,
+                usedReferenceImages,
+                usedReferenceAudio,
                 ...(nextReferencePath !== undefined
                   ? { referenceVideoPath: nextReferencePath }
                   : {}),
+                ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+                ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
                 failedAt: Date.now(),
               };
               generatedSegments.push(segmentFailure);
@@ -899,7 +948,11 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             path: segmentPath,
             durationSec: segment.durationSec,
             usedReferenceVideo,
+            usedReferenceImages,
+            usedReferenceAudio,
             ...(nextReferencePath !== undefined ? { referenceVideoPath: nextReferencePath } : {}),
+            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
             completedAt: Date.now(),
           };
           await ctx.appendLog?.('info', 'Seedance 视频片段生成成功', {
@@ -921,6 +974,10 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
             segments: generatedSegments,
             usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
+            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
+            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
+            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
             failedAt: Date.now(),
           });
           await persistResults();
@@ -936,6 +993,10 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
             segments: generatedSegments,
             usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
+            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
+            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
+            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
             failedAt: Date.now(),
           });
           await persistResults();
@@ -1005,6 +1066,10 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
             segments: generatedSegments,
             usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
+            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
+            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
+            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
             completedAt: Date.now(),
           });
           await persistResults();
@@ -1069,6 +1134,10 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
               durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
               segments: generatedSegments,
               usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
+              usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
+              usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
+              ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+              ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
               failedAt: Date.now(),
             });
             await persistResults();
@@ -1083,6 +1152,10 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
             segments: generatedSegments,
             usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
+            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
+            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
+            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
             completedAt: Date.now(),
           });
           await persistResults();
@@ -1104,6 +1177,10 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
             durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
             segments: generatedSegments,
             usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
+            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
+            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
+            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
             failedAt: Date.now(),
           });
           await persistResults();
@@ -1183,16 +1260,31 @@ async function runConsistencyChecker(ctx: StepContext<NativeInput>) {
   }
 
   const failed = checks.filter((check) => !check.pass || check.score < 0.6);
+  const report: ConsistencyReport = {
+    checks,
+    summary: {
+      total: checks.length,
+      passed: checks.length - failed.length,
+      warned: failed.length,
+      blocking: false,
+    },
+  };
+  const artifact = await writeJson(artifactPath(ctx.artifactDir, 'consistency.json'), report);
   if (failed.length > 0) {
-    throw new AppError(
-      'E_LOW_CONFIDENCE',
-      `成片一致性不足：${failed.map((check) => `${check.index}:${check.issues.join('/')}`).join('；')}`,
-    );
+    await ctx.appendLog?.('warn', '成片一致性不足，记录告警后继续输出成片', {
+      warningCount: failed.length,
+      failedChecks: failed.map((check) => ({
+        index: check.index,
+        score: check.score,
+        issues: check.issues,
+        repairPrompt: check.repairPrompt,
+        regeneratePolicy: check.regeneratePolicy,
+      })),
+      artifactPath: artifact,
+    });
   }
-
-  const report: ConsistencyReport = { checks };
   return {
-    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'consistency.json'), report),
+    artifactPath: artifact,
   };
 }
 

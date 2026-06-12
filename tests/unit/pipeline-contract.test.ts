@@ -86,6 +86,14 @@ describe('pipeline step contracts', () => {
     ]);
   });
 
+  it('keeps video scoring steps aligned with spec.md §3', () => {
+    expect(getStepNames('video_scoring')).toEqual([
+      'ingest',
+      'score',
+      'report_writer',
+    ]);
+  });
+
   it('keeps lark download steps aligned with integrate-feishu-video-download spec', () => {
     expect(getStepNames('lark_download')).toEqual(['download']);
   });
@@ -172,6 +180,12 @@ describe('pipeline step contracts', () => {
     expect(prompts['explosion.script_parse']).toContain('直接观看完整广告视频');
     expect(prompts['pretrailer.understand']).toContain('直接观看完整广告视频');
     expect(prompts['pretrailer.understand']).toContain('禁止把视频抽帧成图片');
+    expect(prompts['video_scoring.brand_score']).toContain('直接输入完整视频');
+    expect(prompts['video_scoring.performance_score']).toContain('不要抽帧');
+    expect(prompts['video_scoring.creative_score']).toContain('完整视频');
+    expect(prompts['video_scoring.brand_score']).toContain('本地 BGM 音乐分析结果');
+    expect(prompts['video_scoring.performance_score']).toContain('本地 BGM 音乐分析结果');
+    expect(prompts['video_scoring.creative_score']).toContain('本地 BGM 音乐分析结果');
   });
 
   it('keeps VLM and LLM analysis private while emitting JSON only', () => {
@@ -191,6 +205,9 @@ describe('pipeline step contracts', () => {
       'copywriting.requirement_decompose',
       'copywriting.strategy_analysis',
       'copywriting.script_writer',
+      'video_scoring.brand_score',
+      'video_scoring.performance_score',
+      'video_scoring.creative_score',
       'native.concept_plan',
       'native.script_writer',
       'native.storyboard_builder',

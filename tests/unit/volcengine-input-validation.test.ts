@@ -156,4 +156,55 @@ describe('VolcengineModelClient input validation', () => {
     await expect(new VolcengineModelClient(credentials()).asr(audioPath)).rejects.toThrow(AppError);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
+
+  it('accepts ASR when only the shared speech api key is configured', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get(name: string) {
+            if (name.toLowerCase() === 'x-api-status-code') {
+              return '20000000';
+            }
+            if (name.toLowerCase() === 'x-api-message') {
+              return 'OK';
+            }
+            return null;
+          },
+        },
+        json: async () => ({}),
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get(name: string) {
+            if (name.toLowerCase() === 'x-api-status-code') {
+              return '20000000';
+            }
+            if (name.toLowerCase() === 'x-api-message') {
+              return 'OK';
+            }
+            return null;
+          },
+        },
+        json: async () => ({ result: { text: 'ok', utterances: [] } }),
+      } as never);
+
+    const sharedSpeechCredentials = {
+      ...credentials(),
+      ttsApiKey: 'tts-api-key',
+    };
+    delete sharedSpeechCredentials.asrApiKey;
+    delete sharedSpeechCredentials.asrAppId;
+    delete sharedSpeechCredentials.asrToken;
+
+    await expect(
+      new VolcengineModelClient(sharedSpeechCredentials).asr('https://example.com/demo.wav'),
+    ).resolves.toEqual({ text: 'ok', segments: [] });
+
+    const init = vi.mocked(fetch).mock.calls[0]?.[1] as { headers?: Record<string, string> } | undefined;
+    expect(init?.headers?.['X-Api-Key']).toBe('tts-api-key');
+  });
 });

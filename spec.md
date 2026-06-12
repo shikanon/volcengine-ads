@@ -25,7 +25,7 @@
 6. `compliance_pre`：写入 `compliance_pre.json`
 7. `video_prompt_optimize`：写入 `video_prompts.json`，在调用 Seedance 前把脚本、分镜、参考素材策略和合规约束整理为最终视频生成提示词。
 8. `asset_generator`：写入 `assets.json`。单次 Seedance 生成片段必须控制在 4..15s；当 `durationSec` 超过 15s 时，按多个片段生成（如 25s = 15s + 10s），记录每段成功/失败状态，最终用 FFmpeg 拼接为单条成片。
-9. `consistency_checker`：写入 `consistency.json`
+9. `consistency_checker`：写入 `consistency.json`。该节点用于精品化质检与修复参考，不作为阻断节点；当一致性不足时只记录告警、修复建议和重生成策略，任务仍继续进入 `composer`
 10. `composer`：写入 `finals.json` 并入库成片
 
 广告文案脚本编写使用 `copywriting` 任务类型，是与原生广告生成、爆款广告裂变、广告前贴、数字人口播并列的一级模块。它面向“输入需求 → 匹配行业模板 → 大模型优化模板 → 联网补充产品/热点信息 → 拆解需求 → 深度策略分析 → 输出爆款广告脚本”的复杂 Agent 工作流，不进入视频/音频生成节点：
@@ -36,6 +36,13 @@
 4. `requirement_decompose`：写入 `requirement.json`，基于优化后的行业模板和联网补充拆解产品、人群、卖点、平台语境、限制条件和创意角度。
 5. `strategy_analysis`：写入 `analysis.json`，基于优化模板、联网补充和拆解结果进行钩子、转化路径、证据背书、语气和风险规避分析。
 6. `script_writer`：写入 `scripts.json` 和可预览的 `scripts.md`，输出多条爆款广告脚本，并以 `script` 素材类型登记到素材库。
+
+广告视频打分使用 `video_scoring` 任务类型，是与原生广告生成、爆款广告裂变、广告前贴、数字人口播、广告文案脚本并列的一级模块。它面向“输入本地视频 + 手动选择广告类型（品牌/买量/创意）→ 直接以完整视频做理解与打分 → 输出分维度分数、证据、分析与优化建议”的结构化评估流程，不进入视频生成节点：
+
+1. `ingest`：写入 `source.mp4`，规范化本地输入视频，供后续完整视频理解使用。
+2. `score`：写入 `score.json`，根据用户选择的广告类型调用对应评分 Prompt，直接用 `ModelClient.visionVideo(videoPath, prompt)` 返回结构化评分结果。
+   - 在调用评分 Prompt 前，允许对本地音轨做一次 BGM 特征分析；当前实现使用 `meyda` 对抽取出的音频做能量、频谱和动态特征统计，并把摘要作为 Prompt 辅助上下文输入。
+3. `report_writer`：写入 `report.md` 并以 `report` 素材类型登记到素材库，供任务详情与素材库定位查看。
 
 广告爆款裂变、原生爆款素材生成、广告前贴生成、广告数字人口播都必须在脚本文案生成后、视频/音频生成前进入 `script_confirm` 确认环节。确认节点不调用模型，仅复用上游脚本文案产物供用户预览；任务状态为 `waiting_confirmation` 时，用户确认后通过 `task:confirm-script` 将该节点标记为 `success` 并恢复排队继续执行。
 
@@ -80,6 +87,8 @@ interface NativeInput {
   brief: string;
   productName?: string;
   referenceVideoPath?: string;
+  referenceImagePaths?: string[]; // 可选，最多 9 张
+  referenceAudioPath?: string; // 可选，本地音频绝对路径
   variantCount: number; // 1..5
   durationSec: number;  // game/social/tool/ecommerce: 15..30, novel: 15..60, short_drama: 15..300
   ratio: NativeRatio;
@@ -95,7 +104,7 @@ type CopywritingIndustry = NativeIndustry | 'auto';
 
 interface CopywritingInput {
   industry: CopywritingIndustry; // default: auto
-  requirement: string; // 10..4000
+  requirement?: string; // optional, <= 4000；为空时由模型结合结构化字段与联网搜索推断
   productName?: string; // <= 100
   audience?: string; // <= 200
   platform?: string; // <= 80
@@ -107,6 +116,46 @@ interface CopywritingInput {
 ```
 
 `copywriting` 不生成视频、音频或图片，因此不要求 `script_confirm`，也不要求 `video_prompt_optimize`。最终 `scripts.md` 是用户可直接复用、可在任务详情和素材库中定位的脚本文案产物。
+
+## 5.3 `video_scoring` 输入契约
+
+```typescript
+type AdVideoScoringCategory = 'brand' | 'performance' | 'creative';
+
+interface VideoScoringInput {
+  sourceVideoPath: string; // 本地视频绝对路径
+  category: AdVideoScoringCategory; // 手动选择广告类型
+}
+```
+
+`video_scoring` 不做自动分类、不做跨类型比较，本期只支持单条本地视频评分。结果契约如下：
+
+```typescript
+interface VideoScoringResult {
+  category: AdVideoScoringCategory;
+  compliancePass: boolean;
+  complianceIssues: string[];
+  dimensionScores: Record<string, number>; // 按类型动态变化，可为空对象
+  evidence: Record<string, string>;
+  analysis: string;
+  suggestions: string[];
+  bgmAnalysis?: {
+    available: boolean;
+    summary: string;
+    sampleRate?: number;
+    durationSec?: number;
+    frameCount?: number;
+    energyLevel?: 'low' | 'medium' | 'high';
+    brightness?: 'dark' | 'balanced' | 'bright';
+    dynamics?: 'stable' | 'dynamic' | 'high_dynamic';
+    metrics?: Record<string, { mean: number; min: number; max: number }>;
+  };
+}
+```
+
+- `dimensionScores` 的轴名和数量按广告类型动态变化，不生成跨类型总分，也不做统一归一化。
+- `bgmAnalysis` 为本地音轨分析结果，主要作为广告节奏、情绪和音乐匹配度的辅助判断依据；即使本地分析不可用，也不影响任务成功。
+- 若合规不通过，任务仍可成功返回 `score.json` 与 `report.md`；此时必须至少返回 `category`、`compliancePass=false`、`complianceIssues`、`analysis`、`suggestions`，并允许 `dimensionScores` 为空对象。
 
 
 ## 4. IPC 通信契约（强类型）

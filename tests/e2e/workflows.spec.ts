@@ -27,3 +27,11 @@ test('copywriting workflow exposes requirement-to-script nodes', () => {
     'script_writer',
   ]);
 });
+
+test('video scoring workflow exposes ingest-to-report nodes', () => {
+  expect(WORKFLOW_DEFINITIONS.video_scoring.nodes.map((node) => node.id)).toEqual([
+    'ingest',
+    'score',
+    'report_writer',
+  ]);
+});

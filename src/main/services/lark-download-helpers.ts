@@ -161,6 +161,53 @@ export function parseClientVarsResponses(snippets: string[]): LarkVideoEntry[] {
   return [...videos.values()];
 }
 
+export function parseFileInfoRequestBodies(snippets: string[]): LarkVideoEntry[] {
+  const videos = new Map<string, LarkVideoEntry>();
+
+  for (const snippet of snippets) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(snippet) as unknown;
+    } catch {
+      continue;
+    }
+
+    const fileToken =
+      typeof (parsed as { file_token?: unknown }).file_token === 'string'
+        ? (parsed as { file_token: string }).file_token
+        : undefined;
+    const mountNodeToken =
+      typeof (parsed as { mount_node_token?: unknown }).mount_node_token === 'string'
+        ? (parsed as { mount_node_token: string }).mount_node_token
+        : undefined;
+    if (!fileToken || !mountNodeToken) {
+      continue;
+    }
+
+    if (!videos.has(fileToken)) {
+      videos.set(fileToken, {
+        fileToken,
+        mountNodeToken,
+        name: `${fileToken}.mp4`,
+      });
+    }
+  }
+
+  return [...videos.values()];
+}
+
+export function mergeVideoEntries(...groups: LarkVideoEntry[][]): LarkVideoEntry[] {
+  const merged = new Map<string, LarkVideoEntry>();
+  for (const group of groups) {
+    for (const entry of group) {
+      if (!merged.has(entry.fileToken)) {
+        merged.set(entry.fileToken, entry);
+      }
+    }
+  }
+  return [...merged.values()];
+}
+
 export function resolveLarkDownloadDirectory(baseDir: string, sourceToken: string): string {
   return `${baseDir.replace(/[\\/]+$/u, '')}/${basename(sourceToken)}`;
 }

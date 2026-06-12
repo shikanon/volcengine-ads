@@ -31,6 +31,7 @@ const WORKFLOW_OPTIONS: Array<{ value: TaskType; label: string }> = [
   { value: 'copywriting', label: '广告文案脚本' },
   { value: 'pretrailer', label: '广告前贴' },
   { value: 'avatar', label: '数字人口播广告' },
+  { value: 'video_scoring', label: '广告视频打分' },
   { value: 'lark_download', label: '飞书视频下载' },
 ];
 

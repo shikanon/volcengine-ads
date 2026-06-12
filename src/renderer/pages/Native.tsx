@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Button, Form, Input, InputNumber, Radio, Select, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined, RocketOutlined } from '@ant-design/icons';
 
+import { SelectedAssetList } from '../components/SelectedAssetList.js';
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
 import {
@@ -17,6 +19,8 @@ interface FormValues {
   productName?: string;
   brief: string;
   referenceVideoPath?: string;
+  referenceImagePaths?: string[];
+  referenceAudioPath?: string;
   variantCount: number;
   durationSec: number;
   ratio: NativeRatio;
@@ -46,6 +50,9 @@ function durationBounds(industry: NativeIndustry): { min: number; max: number } 
 
 export function Native() {
   const [form] = Form.useForm<FormValues>();
+  const [selectedReferenceVideoPath, setSelectedReferenceVideoPath] = useState<string>();
+  const [selectedReferenceImagePaths, setSelectedReferenceImagePaths] = useState<string[]>([]);
+  const [selectedReferenceAudioPath, setSelectedReferenceAudioPath] = useState<string>();
   const createTask = useTasksStore((state) => state.createTask);
   const industry = Form.useWatch('industry', form) ?? 'tool';
   const definition = NATIVE_INDUSTRY_DEFINITIONS[industry];
@@ -57,6 +64,33 @@ export function Native() {
     });
     if (path) {
       form.setFieldValue('referenceVideoPath', path);
+      setSelectedReferenceVideoPath(path);
+    }
+  }
+
+  async function pickReferenceImages() {
+    const paths = await api.asset.pickFiles({
+      filters: [
+        {
+          name: 'Image',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff', 'tif', 'heic', 'heif'],
+        },
+      ],
+      multi: true,
+    });
+    if (paths.length > 0) {
+      form.setFieldValue('referenceImagePaths', paths);
+      setSelectedReferenceImagePaths(paths);
+    }
+  }
+
+  async function pickReferenceAudio() {
+    const [path] = await api.asset.pickFiles({
+      filters: [{ name: 'Audio', extensions: ['wav', 'mp3'] }],
+    });
+    if (path) {
+      form.setFieldValue('referenceAudioPath', path);
+      setSelectedReferenceAudioPath(path);
     }
   }
 
@@ -68,6 +102,10 @@ export function Native() {
         brief: values.brief,
         ...(values.productName ? { productName: values.productName } : {}),
         ...(values.referenceVideoPath ? { referenceVideoPath: values.referenceVideoPath } : {}),
+        ...(values.referenceImagePaths && values.referenceImagePaths.length > 0
+          ? { referenceImagePaths: values.referenceImagePaths }
+          : {}),
+        ...(values.referenceAudioPath ? { referenceAudioPath: values.referenceAudioPath } : {}),
         variantCount: values.variantCount,
         durationSec: values.durationSec,
         ratio: values.ratio,
@@ -75,6 +113,9 @@ export function Native() {
       },
     });
     form.resetFields();
+    setSelectedReferenceVideoPath(undefined);
+    setSelectedReferenceImagePaths([]);
+    setSelectedReferenceAudioPath(undefined);
     void message.success('任务已入队');
   }
 
@@ -104,6 +145,15 @@ export function Native() {
           }}
           onFinish={(values) => void submit(values)}
         >
+          <Form.Item name="referenceVideoPath" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="referenceImagePaths" hidden>
+            <Select mode="multiple" options={[]} />
+          </Form.Item>
+          <Form.Item name="referenceAudioPath" hidden>
+            <Input />
+          </Form.Item>
           <div className="native-form-grid">
             <Form.Item name="industry" label="行业" rules={[{ required: true }]}>
               <Select<NativeIndustry> options={INDUSTRY_OPTIONS} />
@@ -126,9 +176,11 @@ export function Native() {
           </Form.Item>
           <Form.Item label="参考视频">
             <Space.Compact className="full-width">
-              <Form.Item name="referenceVideoPath" noStyle>
-                <Input readOnly placeholder="可选，用于保持画面风格或产品上下文" />
-              </Form.Item>
+              <Input
+                readOnly
+                placeholder="可选，用于保持画面风格或产品上下文"
+                value={selectedReferenceVideoPath}
+              />
               <Button
                 type="default"
                 className="file-picker-button"
@@ -137,11 +189,56 @@ export function Native() {
                 onClick={() => void pickReferenceVideo()}
               />
             </Space.Compact>
+            <SelectedAssetList
+              label="已选择参考视频"
+              paths={selectedReferenceVideoPath ? [selectedReferenceVideoPath] : []}
+            />
           </Form.Item>
-          <Form.Item name="brief" label="创意简报" rules={[{ required: true, min: 10 }]}>
+          <Form.Item label="参考图片">
+            <Space.Compact className="full-width">
+              <Input
+                readOnly
+                placeholder="可选，最多 9 张，用于稳定人物、商品、场景或风格锚点"
+                value={
+                  selectedReferenceImagePaths.length > 0
+                    ? `已选择 ${selectedReferenceImagePaths.length} 张图片`
+                    : undefined
+                }
+              />
+              <Button
+                type="default"
+                className="file-picker-button"
+                icon={<FolderOpenOutlined />}
+                aria-label="选择参考图片"
+                onClick={() => void pickReferenceImages()}
+              />
+            </Space.Compact>
+            <SelectedAssetList label="已选择参考图片" paths={selectedReferenceImagePaths} />
+          </Form.Item>
+          <Form.Item label="参考音频">
+            <Space.Compact className="full-width">
+              <Input
+                readOnly
+                placeholder="可选，用于提示节奏、氛围或口播风格"
+                value={selectedReferenceAudioPath}
+              />
+              <Button
+                type="default"
+                className="file-picker-button"
+                icon={<FolderOpenOutlined />}
+                aria-label="选择参考音频"
+                onClick={() => void pickReferenceAudio()}
+              />
+            </Space.Compact>
+            <SelectedAssetList
+              label="已选择参考音频"
+              paths={selectedReferenceAudioPath ? [selectedReferenceAudioPath] : []}
+            />
+          </Form.Item>
+          <Form.Item name="brief" label="广告文案脚本" rules={[{ required: true, min: 10 }]}>
             <Input.TextArea
               rows={7}
-              placeholder="描述产品、目标人群、卖点、禁用表达、投放场景或希望模仿的节奏。"
+              placeholder="输入广告文案脚本，可包含产品卖点、目标人群、口播内容、禁用表达和投放场景。"
               showCount
               maxLength={2000}
             />

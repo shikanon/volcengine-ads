@@ -1,6 +1,7 @@
 import { Button, Form, Input, InputNumber, Radio, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined, ThunderboltOutlined } from '@ant-design/icons';
 
+import { SelectedAssetList } from '../components/SelectedAssetList.js';
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
 import {
@@ -22,6 +23,7 @@ interface FormValues {
 export function Explosion() {
   const [form] = Form.useForm<FormValues>();
   const sourceMode = Form.useWatch('sourceMode', form) ?? 'douyin';
+  const sourceVideoPath = Form.useWatch('sourceVideoPath', form);
   const createTask = useTasksStore((state) => state.createTask);
 
   async function pickVideo() {
@@ -98,7 +100,7 @@ export function Explosion() {
             <Form.Item label="本地视频" required>
               <Space.Compact className="full-width">
                 <Form.Item name="sourceVideoPath" noStyle rules={[{ required: true }]}>
-                  <Input readOnly />
+                  <Input readOnly placeholder="选择本地爆款视频后将在下方显示" />
                 </Form.Item>
                 <Button
                   type="default"
@@ -108,6 +110,7 @@ export function Explosion() {
                   onClick={() => void pickVideo()}
                 />
               </Space.Compact>
+              <SelectedAssetList label="已选择本地视频" paths={sourceVideoPath ? [sourceVideoPath] : []} />
             </Form.Item>
           )}
           <Form.Item name="variantCount" label="裂变数量" rules={[{ required: true }]}>

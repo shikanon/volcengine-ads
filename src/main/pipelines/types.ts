@@ -7,6 +7,7 @@ import type {
   LarkDownloadInput,
   NativeInput,
   PretrailerInput,
+  VideoScoringInput,
   TaskProgressEvent,
   TaskRecord,
   TaskType,
@@ -27,6 +28,7 @@ export type PipelineInput =
   | AvatarInput
   | NativeInput
   | CopywritingInput
+  | VideoScoringInput
   | LarkDownloadInput;
 
 export interface StepContext<TInput = PipelineInput> {

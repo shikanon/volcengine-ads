@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -147,7 +148,11 @@ async function loadAppSettingsEnv() {
   }
   const dbPath =
     process.env.LIVE_SMOKE_APP_DB ||
-    join(homedir(), 'Library', 'Application Support', 'AIGC Ads Studio', 'aigc.db');
+    [
+      join(homedir(), 'Library', 'Application Support', 'volcengine-ads', 'aigc.db'),
+      join(homedir(), 'Library', 'Application Support', 'AIGC Ads Studio', 'aigc.db'),
+    ].find((candidate) => existsSync(candidate)) ||
+    join(homedir(), 'Library', 'Application Support', 'volcengine-ads', 'aigc.db');
   let secret;
   async function getSecret() {
     if (secret) {
@@ -203,6 +208,7 @@ async function loadAppSettingsEnv() {
       setEnvIfMissing(envName, value);
     }
   }
+  setEnvIfMissing('VOLC_ASR_API_KEY', process.env.VOLC_TTS_API_KEY);
 }
 
 function required(name) {
@@ -225,6 +231,10 @@ function requiredOne(names) {
 
 function optional(name, fallback) {
   return process.env[name] || fallback;
+}
+
+function effectiveAsrApiKey() {
+  return process.env.VOLC_ASR_API_KEY || process.env.VOLC_TTS_API_KEY;
 }
 
 function optionalNumber(name, fallback) {
@@ -983,7 +993,7 @@ async function extractFrameForSmoke(videoPath, outputName) {
 }
 
 async function transcribeLocalAudio(audioPath) {
-  const apiKey = process.env.VOLC_ASR_API_KEY;
+  const apiKey = effectiveAsrApiKey();
   const appId = apiKey ? undefined : required('VOLC_ASR_APPID');
   const token = apiKey ? undefined : required('VOLC_ASR_TOKEN');
   const audioUrl = await uploadOssForAsr(audioPath);
@@ -1059,10 +1069,28 @@ function assertFileCreated(path, label) {
   }
 }
 
+async function prepareExplosionSourceVideo() {
+  const douyinUrl = process.env.LIVE_FEATURE_EXPLOSION_DOUYIN_URL;
+  if (!douyinUrl) {
+    const sourcePath = optional('LIVE_FEATURE_SOURCE_VIDEO', nativeReferenceVideoPath);
+    return {
+      sourceVideo: await trimFeatureReference(sourcePath, 'explosion-source.mp4'),
+      sourceAudio: undefined,
+    };
+  }
+
+  await mkdir(outDir, { recursive: true });
+  const { downloadDouyinVideo } = await import('../dist/main/media/douyin.js');
+  const result = await downloadDouyinVideo(douyinUrl, outDir);
+  return {
+    sourceVideo: result.sourceVideoPath,
+    sourceAudio: result.sourceAudioPath,
+  };
+}
+
 async function smokeExplosionFeature() {
-  const sourcePath = optional('LIVE_FEATURE_SOURCE_VIDEO', nativeReferenceVideoPath);
-  const sourceVideo = await trimFeatureReference(sourcePath, 'explosion-source.mp4');
-  const sourceAudio = await extractAudioForSmoke(sourceVideo, 'explosion-source.m4a');
+  const { sourceVideo, sourceAudio: downloadedAudio } = await prepareExplosionSourceVideo();
+  const sourceAudio = downloadedAudio ?? (await extractAudioForSmoke(sourceVideo, 'explosion-source.m4a'));
   const sourceVideoUrl = await uploadOssForAsr(sourceVideo);
   const transcriptText = await transcribeLocalAudio(sourceAudio);
   const scriptParse = await arkChatJson(
@@ -1356,7 +1384,7 @@ async function smokeCoreFeatures() {
 }
 
 async function smokeAsr() {
-  const apiKey = process.env.VOLC_ASR_API_KEY;
+  const apiKey = effectiveAsrApiKey();
   const appId = apiKey ? undefined : required('VOLC_ASR_APPID');
   const token = apiKey ? undefined : required('VOLC_ASR_TOKEN');
   let audioUrl = optional(
@@ -1491,5 +1519,10 @@ try {
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(message);
+  if (error instanceof Error && error.stack) {
+    console.error(error.stack);
+  } else {
+    console.error(error);
+  }
   process.exitCode = 1;
 }

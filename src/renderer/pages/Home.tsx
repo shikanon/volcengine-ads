@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Typography } from 'antd';
 import {
+  BarChartOutlined,
   DownloadOutlined,
   FileTextOutlined,
   PlayCircleOutlined,
@@ -14,7 +15,7 @@ import { useTasksStore } from '../stores/tasks-store.js';
 import type { TaskStatus } from '../../shared/types.js';
 
 interface HomeProps {
-  onNavigate(page: 'explosion' | 'native' | 'copywriting' | 'pretrailer' | 'avatar' | 'lark_download'): void;
+  onNavigate(page: 'explosion' | 'native' | 'copywriting' | 'pretrailer' | 'avatar' | 'video_scoring' | 'lark_download'): void;
 }
 
 type QueueFilter = 'all' | TaskStatus | 'needs_attention';
@@ -31,7 +32,7 @@ const WORKFLOW_LAUNCHERS = [
     key: 'native',
     icon: <RocketOutlined />,
     title: '原生爆款素材',
-    description: '按行业 brief 生成概念、脚本、素材和成片。',
+    description: '按行业广告文案脚本生成概念、脚本、素材和成片。',
     meta: '六行业模板',
   },
   {
@@ -54,6 +55,13 @@ const WORKFLOW_LAUNCHERS = [
     title: '数字人口播',
     description: '从品牌资料和商品图生成数字人口播广告。',
     meta: '品牌讲解',
+  },
+  {
+    key: 'video_scoring',
+    icon: <BarChartOutlined />,
+    title: '广告视频打分',
+    description: '上传本地广告视频，按品牌、买量或创意维度做结构化评分。',
+    meta: '动态图表',
   },
   {
     key: 'lark_download',

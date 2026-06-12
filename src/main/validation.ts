@@ -4,6 +4,7 @@ import { isAbsolute } from 'node:path';
 import { AppError } from './errors.js';
 import { parseLarkDocumentUrl } from './services/lark-download-helpers.js';
 import {
+  VIDEO_SCORING_CATEGORY_DEFINITIONS,
   DEFAULT_VIDEO_RESOLUTION,
   COPYWRITING_SCRIPT_FORMAT_DEFINITIONS,
   PRETRAILER_VIDEO_TYPE_DEFINITIONS,
@@ -22,6 +23,7 @@ import type {
   NativeInput,
   NativeRatio,
   PretrailerInput,
+  VideoScoringInput,
   VideoResolution,
 } from '../shared/types.js';
 
@@ -37,6 +39,7 @@ const NATIVE_RATIOS: readonly NativeRatio[] = ['9:16', '16:9', '1:1'];
 const COPYWRITING_FORMATS: readonly CopywritingScriptFormat[] =
   COPYWRITING_SCRIPT_FORMAT_DEFINITIONS.map((definition) => definition.value);
 const COPYWRITING_INDUSTRIES: readonly CopywritingIndustry[] = ['auto', ...NATIVE_INDUSTRIES];
+const VIDEO_SCORING_CATEGORIES = VIDEO_SCORING_CATEGORY_DEFINITIONS.map((definition) => definition.value);
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -170,9 +173,9 @@ function validateNative(input: unknown): NativeInput {
   if (typeof industry !== 'string' || !NATIVE_INDUSTRIES.includes(industry as NativeIndustry)) {
     throw new AppError('E_INPUT_VALIDATION', '原生爆款行业不支持');
   }
-  const brief = requireString(input.brief, '创意简报');
+  const brief = requireString(input.brief, '广告文案脚本');
   if (brief.length < 10 || brief.length > 2000) {
-    throw new AppError('E_INPUT_VALIDATION', '创意简报需在 10..2000 字');
+    throw new AppError('E_INPUT_VALIDATION', '广告文案脚本需在 10..2000 字');
   }
   const productName =
     typeof input.productName === 'string' && input.productName.trim().length > 0
@@ -187,6 +190,37 @@ function validateNative(input: unknown): NativeInput {
       : undefined;
   if (referenceVideoPath !== undefined && !existsSync(referenceVideoPath)) {
     throw new AppError('E_INPUT_VALIDATION', '参考视频不存在');
+  }
+  let referenceImagePaths: string[] | undefined;
+  if (input.referenceImagePaths !== undefined) {
+    if (!Array.isArray(input.referenceImagePaths)) {
+      throw new AppError('E_INPUT_VALIDATION', '参考图片格式错误');
+    }
+    const normalized = input.referenceImagePaths
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    if (normalized.length !== input.referenceImagePaths.length) {
+      throw new AppError('E_INPUT_VALIDATION', '参考图片格式错误');
+    }
+    if (normalized.length > 9) {
+      throw new AppError('E_INPUT_VALIDATION', '参考图片最多支持 9 张');
+    }
+    for (const path of normalized) {
+      if (!existsSync(path)) {
+        throw new AppError('E_INPUT_VALIDATION', `参考图片不存在：${path}`);
+      }
+    }
+    if (normalized.length > 0) {
+      referenceImagePaths = normalized;
+    }
+  }
+  const referenceAudioPath =
+    typeof input.referenceAudioPath === 'string' && input.referenceAudioPath.trim().length > 0
+      ? input.referenceAudioPath.trim()
+      : undefined;
+  if (referenceAudioPath !== undefined && !existsSync(referenceAudioPath)) {
+    throw new AppError('E_INPUT_VALIDATION', '参考音频不存在');
   }
   const variantCount = Math.trunc(requireNumber(input.variantCount ?? 1, '生成数量'));
   if (variantCount < 1 || variantCount > 5) {
@@ -207,6 +241,8 @@ function validateNative(input: unknown): NativeInput {
     brief,
     ...(productName !== undefined ? { productName } : {}),
     ...(referenceVideoPath !== undefined ? { referenceVideoPath } : {}),
+    ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+    ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
     variantCount,
     durationSec,
     ratio: ratio as NativeRatio,
@@ -230,9 +266,9 @@ function validateCopywriting(input: unknown): CopywritingInput {
   if (!isRecord(input)) {
     throw new AppError('E_INPUT_VALIDATION', '广告文案脚本输入格式错误');
   }
-  const requirement = requireString(input.requirement, '文案需求');
-  if (requirement.length < 10 || requirement.length > 4000) {
-    throw new AppError('E_INPUT_VALIDATION', '文案需求需在 10..4000 字');
+  const requirement = optionalTrimmedString(input, 'requirement', 4000);
+  if (typeof input.requirement === 'string' && input.requirement.trim().length > 4000) {
+    throw new AppError('E_INPUT_VALIDATION', '文案需求不能超过 4000 字');
   }
   const productName = optionalTrimmedString(input, 'productName', 100);
   const audience = optionalTrimmedString(input, 'audience', 200);
@@ -264,7 +300,7 @@ function validateCopywriting(input: unknown): CopywritingInput {
   }
   return {
     industry: industry as CopywritingIndustry,
-    requirement,
+    ...(requirement !== undefined ? { requirement } : {}),
     ...(productName !== undefined ? { productName } : {}),
     ...(audience !== undefined ? { audience } : {}),
     ...(platform !== undefined ? { platform } : {}),
@@ -272,6 +308,27 @@ function validateCopywriting(input: unknown): CopywritingInput {
     variantCount,
     durationSec,
     enableWebSearch: input.enableWebSearch !== false,
+  };
+}
+
+function validateVideoScoring(input: unknown): VideoScoringInput {
+  if (!isRecord(input)) {
+    throw new AppError('E_INPUT_VALIDATION', '广告视频打分输入格式错误');
+  }
+  const sourceVideoPath = requireString(input.sourceVideoPath, '广告视频');
+  if (!existsSync(sourceVideoPath)) {
+    throw new AppError('E_INPUT_VALIDATION', '广告视频不存在');
+  }
+  const category = input.category;
+  if (
+    typeof category !== 'string' ||
+    !VIDEO_SCORING_CATEGORIES.includes(category as (typeof VIDEO_SCORING_CATEGORIES)[number])
+  ) {
+    throw new AppError('E_INPUT_VALIDATION', '广告视频类型不支持');
+  }
+  return {
+    sourceVideoPath,
+    category: category as VideoScoringInput['category'],
   };
 }
 
@@ -314,6 +371,9 @@ export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskReq
   }
   if (req.type === 'copywriting') {
     return { type: 'copywriting', input: validateCopywriting(req.input) };
+  }
+  if (req.type === 'video_scoring') {
+    return { type: 'video_scoring', input: validateVideoScoring(req.input) };
   }
   if (req.type === 'lark_download') {
     return { type: 'lark_download', input: validateLarkDownload(req.input) };

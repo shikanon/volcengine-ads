@@ -10,6 +10,7 @@ import {
 import {
   AppstoreOutlined,
   ApartmentOutlined,
+  BarChartOutlined,
   ClockCircleOutlined,
   DownloadOutlined,
   FileTextOutlined,
@@ -32,6 +33,7 @@ import { LarkDownload } from './pages/LarkDownload.js';
 import { Native } from './pages/Native.js';
 import { Pretrailer } from './pages/Pretrailer.js';
 import { Settings } from './pages/Settings.js';
+import { VideoScoring } from './pages/VideoScoring.js';
 import { Workflows } from './pages/Workflows.js';
 import { useTasksStore } from './stores/tasks-store.js';
 
@@ -42,6 +44,7 @@ type PageKey =
   | 'copywriting'
   | 'pretrailer'
   | 'avatar'
+  | 'video_scoring'
   | 'lark_download'
   | 'workflows'
   | 'assets'
@@ -54,6 +57,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
   copywriting: '广告文案脚本',
   pretrailer: '广告前贴',
   avatar: '数字人口播',
+  video_scoring: '广告视频打分',
   lark_download: '飞书视频下载',
   workflows: '工作流',
   assets: '素材库',
@@ -67,6 +71,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
   copywriting: '需求拆解到爆款脚本',
   pretrailer: '原片到开场钩子',
   avatar: '品牌资料到口播视频',
+  video_scoring: '完整视频到结构化评分',
   lark_download: '飞书文档到本地视频',
   workflows: '节点逻辑与 Prompt 调试',
   assets: '生成结果与本地文件',
@@ -80,6 +85,7 @@ const NAV_ITEMS: Array<{ key: PageKey; icon: ReactNode; label: string }> = [
   { key: 'native', icon: <RocketOutlined />, label: '原生爆款素材生成' },
   { key: 'pretrailer', icon: <PlayCircleOutlined />, label: '广告吸引前贴生成' },
   { key: 'avatar', icon: <UserOutlined />, label: '广告数字人口播' },
+  { key: 'video_scoring', icon: <BarChartOutlined />, label: '广告视频打分' },
   { key: 'lark_download', icon: <DownloadOutlined />, label: '飞书视频下载' },
   { key: 'workflows', icon: <ApartmentOutlined />, label: '工作流' },
   { key: 'assets', icon: <AppstoreOutlined />, label: '素材库' },
@@ -106,6 +112,7 @@ export function App() {
     if (page === 'copywriting') return <Copywriting />;
     if (page === 'pretrailer') return <Pretrailer />;
     if (page === 'avatar') return <Avatar />;
+    if (page === 'video_scoring') return <VideoScoring />;
     if (page === 'lark_download') return <LarkDownload />;
     if (page === 'workflows') return <Workflows />;
     if (page === 'assets') return <Assets />;
@@ -184,7 +191,7 @@ export function App() {
             </nav>
             <Layout.Content className="content">
               {content}
-              {page !== 'home' ? (
+              {page !== 'home' && page !== 'video_scoring' ? (
                 <section className="section task-strip">
                   <div className="section-heading">
                     <Typography.Title level={4}>最近任务</Typography.Title>

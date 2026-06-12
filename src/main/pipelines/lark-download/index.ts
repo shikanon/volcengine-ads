@@ -24,7 +24,7 @@ async function runDownload(ctx: StepContext<LarkDownloadInput>) {
         status: 'running',
         progress,
         step: 'download',
-        message,
+        logs: message,
         artifactPath: predictedSummaryPath,
       });
     },

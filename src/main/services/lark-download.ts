@@ -12,8 +12,10 @@ import {
   isRetryableDownloadError,
   isUnauthorizedStatus,
   parseClientVarsResponses,
+  parseFileInfoRequestBodies,
   parseLarkDocumentUrl,
   sanitizeFileName,
+  mergeVideoEntries,
   type LarkVideoEntry,
 } from './lark-download-helpers.js';
 import type { LarkDownloadInput, LarkDownloadSummary } from '../../shared/types.js';
@@ -76,13 +78,79 @@ async function wait(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function loadDocument(window: BrowserWindow, url: string): Promise<string[]> {
+interface LoadedDocumentData {
+  clientVarsSnippets: string[];
+  fileInfoRequestBodies: string[];
+}
+
+async function loadDocument(window: BrowserWindow, url: string): Promise<LoadedDocumentData> {
   await window.loadURL(url);
   await wait(PAGE_SETTLE_MS);
   const result = await window.webContents.executeJavaScript(
     `
       (async () => {
         const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const capture = window.__tr_lark_video_capture ?? {
+          installed: false,
+          fileInfoRequestBodies: [],
+        };
+        if (!capture.installed) {
+          capture.installed = true;
+          const pushBody = (body) => {
+            if (typeof body !== 'string' || body.length === 0) {
+              return;
+            }
+            if (!body.includes('"file_token"') || !body.includes('"mount_node_token"')) {
+              return;
+            }
+            if (!capture.fileInfoRequestBodies.includes(body)) {
+              capture.fileInfoRequestBodies.push(body);
+            }
+          };
+          const originalFetch = window.fetch.bind(window);
+          window.fetch = async (input, init) => {
+            try {
+              const targetUrl =
+                typeof input === 'string'
+                  ? input
+                  : input instanceof Request
+                    ? input.url
+                    : String(input ?? '');
+              if (/\\/space\\/api\\/box\\/file\\/info\\//.test(targetUrl)) {
+                const body = init?.body;
+                if (typeof body === 'string') {
+                  pushBody(body);
+                }
+              }
+            } catch {
+              // Ignore capture failures and preserve the original request flow.
+            }
+            return originalFetch(input, init);
+          };
+
+          const originalOpen = XMLHttpRequest.prototype.open;
+          const originalSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.open = function (...args) {
+            this.__tr_lark_request_url = typeof args[1] === 'string' ? args[1] : '';
+            return originalOpen.apply(this, args);
+          };
+          XMLHttpRequest.prototype.send = function (body) {
+            try {
+              if (
+                typeof this.__tr_lark_request_url === 'string' &&
+                /\\/space\\/api\\/box\\/file\\/info\\//.test(this.__tr_lark_request_url) &&
+                typeof body === 'string'
+              ) {
+                pushBody(body);
+              }
+            } catch {
+              // Ignore capture failures and preserve the original request flow.
+            }
+            return originalSend.call(this, body);
+          };
+          window.__tr_lark_video_capture = capture;
+        }
+
         for (let index = 0; index < 4; index += 1) {
           window.scrollTo(0, document.body.scrollHeight);
           await delay(1000);
@@ -106,12 +174,35 @@ async function loadDocument(window: BrowserWindow, url: string): Promise<string[
             // Ignore individual client_vars fetch failures and keep the rest.
           }
         }
-        return responses;
+        return {
+          clientVarsSnippets: responses,
+          fileInfoRequestBodies: Array.isArray(capture.fileInfoRequestBodies)
+            ? capture.fileInfoRequestBodies.filter((item) => typeof item === 'string')
+            : [],
+        };
       })();
     `,
     true,
   );
-  return Array.isArray(result) ? result.filter((item): item is string => typeof item === 'string') : [];
+  if (!result || typeof result !== 'object') {
+    return {
+      clientVarsSnippets: [],
+      fileInfoRequestBodies: [],
+    };
+  }
+
+  const data = result as {
+    clientVarsSnippets?: unknown;
+    fileInfoRequestBodies?: unknown;
+  };
+  return {
+    clientVarsSnippets: Array.isArray(data.clientVarsSnippets)
+      ? data.clientVarsSnippets.filter((item): item is string => typeof item === 'string')
+      : [],
+    fileInfoRequestBodies: Array.isArray(data.fileInfoRequestBodies)
+      ? data.fileInfoRequestBodies.filter((item): item is string => typeof item === 'string')
+      : [],
+  };
 }
 
 async function fetchVideoMeta(params: {
@@ -272,8 +363,11 @@ export async function downloadLarkVideos(params: DownloadLarkVideosParams): Prom
   const window = createHiddenWindow();
   try {
     params.onProgress?.('正在打开飞书页面并发现视频块', 0, 0);
-    const snippets = await loadDocument(window, parsed.normalizedUrl);
-    const entries = parseClientVarsResponses(snippets);
+    const documentData = await loadDocument(window, parsed.normalizedUrl);
+    const entries = mergeVideoEntries(
+      parseClientVarsResponses(documentData.clientVarsSnippets),
+      parseFileInfoRequestBodies(documentData.fileInfoRequestBodies),
+    );
     summary.discovered = entries.length;
 
     const cookies = await window.webContents.session.cookies.get({ url: parsed.normalizedUrl });
@@ -293,7 +387,8 @@ export async function downloadLarkVideos(params: DownloadLarkVideosParams): Prom
     }
 
     if (entries.length === 0) {
-      const firstFailure = '未在页面中发现视频块，请确认链接可访问且页面内包含视频内容。';
+      const firstFailure =
+        '未在页面中发现视频块。当前已尝试 client_vars 与 box/file/info 两种发现方式，请确认链接可访问且页面内包含视频内容。';
       summary.failures.push({
         fileToken: '',
         mountNodeToken: '',

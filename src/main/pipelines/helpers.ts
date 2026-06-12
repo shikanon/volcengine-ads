@@ -59,6 +59,7 @@ export function splitDurationForSeedanceGeneration(durationSec: number): number[
 export interface ReferencePolicyInput {
   hasReferenceVideo?: boolean;
   hasReferenceImages?: boolean;
+  hasReferenceAudio?: boolean;
   hasProductImages?: boolean;
   hasAvatarImage?: boolean;
   purpose: string;
@@ -92,10 +93,19 @@ export function buildReferencePolicyText(input: ReferencePolicyInput): string {
   if (input.hasReferenceImages === true) {
     policies.push('参考图用于稳定人物、商品、场景或风格锚点，不扩写图片中不存在的品牌承诺。');
   }
+  if (input.hasReferenceAudio === true) {
+    policies.push('参考音频用于借节奏、语气、情绪或音效氛围，不直接复刻原音频内容，也不扩写音频里未表达的承诺。');
+  }
   if (input.hasReferenceVideo === true) {
     policies.push('参考该视频的主体位置、动作节奏、镜头连续性和转场衔接，不复制具体人物身份、场景和画面。');
   }
-  if (input.hasReferenceVideo !== true && input.hasReferenceImages !== true && input.hasProductImages !== true && input.hasAvatarImage !== true) {
+  if (
+    input.hasReferenceVideo !== true &&
+    input.hasReferenceImages !== true &&
+    input.hasReferenceAudio !== true &&
+    input.hasProductImages !== true &&
+    input.hasAvatarImage !== true
+  ) {
     policies.push(input.noReferenceFallback ?? '本次没有可用参考素材，必须只基于脚本、分镜和任务上下文生成，不要声称参考了视频或图片。');
   }
   return policies.join('\n');

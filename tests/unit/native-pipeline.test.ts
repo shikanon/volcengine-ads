@@ -221,7 +221,10 @@ class NativeMockModelClient implements ModelClient {
   readonly videoRequests: SeedanceVideoRequest[] = [];
   private readonly failedVideoIndexes = new Set<number>();
 
-  constructor(private readonly failVideoOnceForIndexes: number[] = []) {}
+  constructor(
+    private readonly failVideoOnceForIndexes: number[] = [],
+    private readonly visionVideoResponse = JSON.stringify({ pass: true, issues: [], score: 0.92 }),
+  ) {}
 
   async generateImage(): Promise<ImageResult> {
     throw new Error('generateImage should not be called');
@@ -324,7 +327,7 @@ class NativeMockModelClient implements ModelClient {
   }
 
   async visionVideo(): Promise<string> {
-    return JSON.stringify({ pass: true, issues: [], score: 0.92 });
+    return this.visionVideoResponse;
   }
 }
 
@@ -378,6 +381,80 @@ describe('nativePipeline', () => {
         tags: ['native', 'tool'],
       }),
     ]);
+  });
+
+  it('keeps native task successful when consistency checker only returns warnings', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'native-pipeline-'));
+    const repository = new MemoryTaskRepository();
+    const task = repository.createTask({
+      request: {
+        type: 'native',
+        input: {
+          industry: 'tool',
+          brief: '面向 AI 健康 APP 的新年营销短视频，突出每日健康提醒和轻量记录。',
+          productName: 'AI 健康 APP',
+          variantCount: 1,
+          durationSec: 15,
+          ratio: '9:16',
+        },
+      },
+      stepNames: nativePipeline.steps.map((step) => step.name),
+    });
+
+    const runParams = {
+      task,
+      pipeline: nativePipeline,
+      repository,
+      modelClient: new NativeMockModelClient(
+        [],
+        JSON.stringify({
+          pass: false,
+          issues: ['首秒钩子偏弱', '商品识别度一般'],
+          score: 0.42,
+          repairPrompt: '把商品特写和痛点动作提前到 0-1 秒。',
+          regeneratePolicy: '保留后半段，优先重做开场镜头。',
+        }),
+      ),
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    };
+
+    await runPipeline(runParams);
+    repository.confirmWaitingStep(task.id);
+    await runPipeline(runParams);
+
+    const completed = repository.getTask(task.id);
+    expect(completed?.status).toBe('success');
+    expect(completed?.steps.find((step) => step.step === 'consistency_checker')).toMatchObject({
+      status: 'success',
+    });
+    expect(repository.listAssets()).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        kind: 'video',
+        tags: ['native', 'tool'],
+      }),
+    ]);
+
+    const consistency = JSON.parse(
+      await readFile(join(userDataPath, 'artifacts', task.id, 'consistency.json'), 'utf8'),
+    ) as {
+      checks: Array<{ pass: boolean; score: number; issues: string[]; repairPrompt?: string }>;
+      summary: { total: number; passed: number; warned: number; blocking: boolean };
+    };
+    expect(consistency.summary).toEqual({
+      total: 1,
+      passed: 0,
+      warned: 1,
+      blocking: false,
+    });
+    expect(consistency.checks[0]).toMatchObject({
+      pass: false,
+      score: 0.42,
+      issues: ['首秒钩子偏弱', '商品识别度一般'],
+      repairPrompt: '把商品特写和痛点动作提前到 0-1 秒。',
+    });
   });
 
   it('persists native asset generation successes and skips them on retry', async () => {
@@ -506,6 +583,132 @@ describe('nativePipeline', () => {
     expect(modelClient.videoRequests[0]?.prompt).toContain(VIDEO_TEXT_STICKER_PROMPT);
     expect(modelClient.videoRequests[0]?.prompt).toContain('口播参考（仅用于节奏，不生成画面文字）');
     expect(modelClient.videoRequests[0]?.prompt).not.toContain('口播/字幕');
+  });
+
+  it('passes native reference video, images and audio into Seedance requests', async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), 'native-assets-'));
+    const referenceVideoPath = join(artifactDir, 'reference.mp4');
+    const referenceImagePath1 = join(artifactDir, 'reference-1.png');
+    const referenceImagePath2 = join(artifactDir, 'reference-2.jpg');
+    const referenceAudioPath = join(artifactDir, 'reference.wav');
+    writeFileSync(referenceVideoPath, 'video');
+    writeFileSync(referenceImagePath1, 'image');
+    writeFileSync(referenceImagePath2, 'image');
+    writeFileSync(referenceAudioPath, 'audio');
+    const input = {
+      industry: 'tool' as const,
+      brief: '生成带参考素材的工具类广告素材',
+      productName: 'AI 工具',
+      referenceVideoPath,
+      referenceImagePaths: [referenceImagePath1, referenceImagePath2],
+      referenceAudioPath,
+      variantCount: 1,
+      durationSec: 15,
+      ratio: '9:16' as const,
+    };
+    const task: TaskRecord = {
+      id: 'task-native',
+      type: 'native',
+      status: 'running',
+      progress: 0,
+      input,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      steps: [],
+    };
+    await writeFile(
+      join(artifactDir, 'industry.json'),
+      JSON.stringify({
+        industry: 'tool',
+        title: '工具',
+        formula: '痛点 + 演示 + CTA',
+        durationRange: '15-30s',
+        requiredModules: ['UI 演示'],
+        complianceFocus: '真实承诺',
+        hardRules: { blacklistWords: [], forbiddenScenes: [] },
+      }),
+      'utf8',
+    );
+    await writeFile(
+      join(artifactDir, 'storyboard.json'),
+      JSON.stringify({
+        variants: [
+          {
+            index: 1,
+            title: '工具提效 A',
+            script: '展示工具提效。',
+            shots: [
+              {
+                index: 1,
+                durationSec: 4,
+                imagePrompt: '工具界面',
+                videoPrompt: '工具界面自动完成任务',
+              },
+            ],
+          },
+        ],
+      }),
+      'utf8',
+    );
+
+    const step = nativePipeline.steps.find((item) => item.name === 'asset_generator');
+    if (step === undefined) {
+      throw new Error('asset_generator step missing');
+    }
+    const modelClient = new NativeMockModelClient();
+
+    await expect(
+      step.runStep({
+        task,
+        input,
+        artifactDir,
+        repository: {} as TaskRepository,
+        modelClient,
+        workflowPrompts: {},
+        emitProgress: () => undefined,
+      }),
+    ).resolves.toEqual({ artifactPath: join(artifactDir, 'assets.json') });
+
+    expect(modelClient.videoRequests).toHaveLength(1);
+    expect(modelClient.videoRequests[0]).toMatchObject({
+      refVideoPath: join(artifactDir, 'seedance_reference.mp4'),
+      refImagePaths: [referenceImagePath1, referenceImagePath2],
+      audioPath: referenceAudioPath,
+      ratio: '9:16',
+      generateAudio: true,
+      outputPath: join(artifactDir, 'asset_variant_1.mp4'),
+    });
+    expect(modelClient.videoRequests[0]?.prompt).toContain('参考图用于稳定人物、商品、场景或风格锚点');
+    expect(modelClient.videoRequests[0]?.prompt).toContain('参考音频用于借节奏、语气、情绪或音效氛围');
+
+    const report = JSON.parse(await readFile(join(artifactDir, 'assets.json'), 'utf8')) as {
+      assets: Array<{
+        usedReferenceVideo?: boolean;
+        usedReferenceImages?: boolean;
+        usedReferenceAudio?: boolean;
+        referenceImagePaths?: string[];
+        referenceAudioPath?: string;
+        segments?: Array<{
+          usedReferenceImages?: boolean;
+          usedReferenceAudio?: boolean;
+          referenceImagePaths?: string[];
+          referenceAudioPath?: string;
+        }>;
+      }>;
+    };
+    expect(report.assets[0]).toMatchObject({
+      usedReferenceVideo: true,
+      usedReferenceImages: true,
+      usedReferenceAudio: true,
+      referenceImagePaths: [referenceImagePath1, referenceImagePath2],
+      referenceAudioPath,
+    });
+    expect(report.assets[0]?.segments?.[0]).toMatchObject({
+      usedReferenceImages: true,
+      usedReferenceAudio: true,
+      referenceImagePaths: [referenceImagePath1, referenceImagePath2],
+      referenceAudioPath,
+    });
   });
 
   it('splits native videos longer than Seedance limit and records segment outputs', async () => {

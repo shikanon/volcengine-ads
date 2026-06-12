@@ -6,6 +6,7 @@ export type TaskType =
   | 'avatar'
   | 'native'
   | 'copywriting'
+  | 'video_scoring'
   | 'lark_download';
 export type TaskStatus =
   | 'queued'
@@ -30,6 +31,7 @@ export type VideoResolution = '480p' | '720p' | '1080p';
 export type CopywritingScriptFormat = 'short_video' | 'feed_ad' | 'live_stream';
 export type CopywritingIndustry = NativeIndustry | 'auto';
 export type LarkDocumentType = 'wiki' | 'docx';
+export type AdVideoScoringCategory = 'brand' | 'performance' | 'creative';
 
 export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = '720p';
 
@@ -61,6 +63,28 @@ export const COPYWRITING_SCRIPT_FORMAT_DEFINITIONS: Array<{
   },
 ];
 
+export const VIDEO_SCORING_CATEGORY_DEFINITIONS: Array<{
+  value: AdVideoScoringCategory;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'brand',
+    label: '品牌广告',
+    description: '关注品牌露出、一致性、制作质量、情感叙事与品牌好感。',
+  },
+  {
+    value: 'performance',
+    label: '买量广告',
+    description: '关注首秒钩子、利益点、CTA、转化链路与效果广告说服力。',
+  },
+  {
+    value: 'creative',
+    label: '创意广告',
+    description: '关注新颖度、传播性、节奏、记忆点与信息传达清晰度。',
+  },
+];
+
 export const SUPPORTED_TTS_SPEAKERS = [
   'zh_female_vv_uranus_bigtts',
   'saturn_zh_female_cancan_tob',
@@ -87,6 +111,7 @@ export interface TaskRecord {
     | AvatarInput
     | NativeInput
     | CopywritingInput
+    | VideoScoringInput
     | LarkDownloadInput;
   error?: string;
   createdAt: number;
@@ -224,6 +249,8 @@ export interface NativeInput {
   brief: string;
   productName?: string;
   referenceVideoPath?: string;
+  referenceImagePaths?: string[];
+  referenceAudioPath?: string;
   variantCount: number;
   durationSec: number;
   ratio: NativeRatio;
@@ -232,7 +259,7 @@ export interface NativeInput {
 
 export interface CopywritingInput {
   industry: CopywritingIndustry;
-  requirement: string;
+  requirement?: string;
   productName?: string;
   audience?: string;
   platform?: string;
@@ -240,6 +267,48 @@ export interface CopywritingInput {
   variantCount: number;
   durationSec: number;
   enableWebSearch?: boolean;
+}
+
+export interface VideoScoringInput {
+  sourceVideoPath: string;
+  category: AdVideoScoringCategory;
+}
+
+export interface VideoScoringAudioMetric {
+  mean: number;
+  min: number;
+  max: number;
+}
+
+export interface VideoScoringBgmAnalysis {
+  available: boolean;
+  summary: string;
+  sampleRate?: number;
+  durationSec?: number;
+  frameCount?: number;
+  energyLevel?: 'low' | 'medium' | 'high';
+  brightness?: 'dark' | 'balanced' | 'bright';
+  dynamics?: 'stable' | 'dynamic' | 'high_dynamic';
+  metrics?: {
+    rms: VideoScoringAudioMetric;
+    energy: VideoScoringAudioMetric;
+    zcr: VideoScoringAudioMetric;
+    spectralCentroid: VideoScoringAudioMetric;
+    spectralFlatness: VideoScoringAudioMetric;
+    spectralSpread: VideoScoringAudioMetric;
+    spectralRolloff: VideoScoringAudioMetric;
+  };
+}
+
+export interface VideoScoringResult {
+  category: AdVideoScoringCategory;
+  compliancePass: boolean;
+  complianceIssues: string[];
+  dimensionScores: Record<string, number>;
+  evidence: Record<string, string>;
+  analysis: string;
+  suggestions: string[];
+  bgmAnalysis?: VideoScoringBgmAnalysis;
 }
 
 export interface LarkDownloadInput {
@@ -363,6 +432,8 @@ export interface TaskProgressEvent {
   step?: string;
   message?: string;
   artifactPath?: string;
+  logs?: string;
+  refreshOutputs?: boolean;
 }
 
 export interface CreateTaskRequest {
@@ -373,6 +444,7 @@ export interface CreateTaskRequest {
     | AvatarInput
     | NativeInput
     | CopywritingInput
+    | VideoScoringInput
     | LarkDownloadInput;
 }
 

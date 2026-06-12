@@ -6,6 +6,7 @@ import { explosionPipeline } from './explosion/index.js';
 import { larkDownloadPipeline } from './lark-download/index.js';
 import { nativePipeline } from './native/index.js';
 import { pretrailerPipeline } from './pretrailer/index.js';
+import { videoScoringPipeline } from './video-scoring/index.js';
 
 const PIPELINES: Record<TaskType, PipelineDefinition> = {
   explosion: explosionPipeline,
@@ -13,6 +14,7 @@ const PIPELINES: Record<TaskType, PipelineDefinition> = {
   avatar: avatarPipeline,
   native: nativePipeline,
   copywriting: copywritingPipeline,
+  video_scoring: videoScoringPipeline,
   lark_download: larkDownloadPipeline,
 };
 

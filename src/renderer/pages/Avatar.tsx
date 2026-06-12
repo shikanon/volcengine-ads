@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button, Form, Input, InputNumber, Radio, Space, Typography, message } from 'antd';
 import { FolderOpenOutlined, UserOutlined } from '@ant-design/icons';
 
+import { SelectedAssetList } from '../components/SelectedAssetList.js';
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
 import {
@@ -21,6 +22,8 @@ interface FormValues {
 
 export function Avatar() {
   const [form] = Form.useForm<FormValues>();
+  const avatarImagePath = Form.useWatch('avatarImagePath', form);
+  const productImagePaths = Form.useWatch('productImagePaths', form);
   const createTask = useTasksStore((state) => state.createTask);
   const [submitting, setSubmitting] = useState(false);
 
@@ -78,7 +81,7 @@ export function Avatar() {
                 noStyle
                 rules={[{ required: true, message: '请选择数字人图片' }]}
               >
-                <Input readOnly />
+                <Input readOnly placeholder="选择数字人图片后将在下方显示" />
               </Form.Item>
               <Button
                 type="default"
@@ -88,6 +91,7 @@ export function Avatar() {
                 onClick={() => void pickAvatar()}
               />
             </Space.Compact>
+            <SelectedAssetList label="已选择数字人图片" paths={avatarImagePath ? [avatarImagePath] : []} />
           </Form.Item>
           <Form.Item
             name="brandIntro"
@@ -116,13 +120,21 @@ export function Avatar() {
                 },
               },
             ]}
-            getValueProps={(value?: string[]) => ({ value: (value ?? []).join('\n') })}
           >
-            <Input.TextArea readOnly rows={3} />
+            <Input
+              readOnly
+              value={
+                productImagePaths && productImagePaths.length > 0
+                  ? `已选择 ${productImagePaths.length} 张产品图`
+                  : undefined
+              }
+              placeholder="选择 1..3 张产品图后将在下方显示"
+            />
           </Form.Item>
           <Button className="secondary-button" icon={<FolderOpenOutlined />} onClick={() => void pickProducts()}>
             选择产品图
           </Button>
+          <SelectedAssetList label="已选择产品图" paths={productImagePaths ?? []} />
           <Form.Item name="duration" label="视频时长">
             <InputNumber min={15} max={60} className="number-input" />
           </Form.Item>

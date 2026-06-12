@@ -1,6 +1,6 @@
-import type { NativeIndustry, TaskType } from './types.js';
+import type { AdVideoScoringCategory, NativeIndustry, TaskType } from './types.js';
 
-export const WORKFLOW_PROMPT_TEMPLATE_VERSION = '2026-06-02-copywriting-web-search-v1';
+export const WORKFLOW_PROMPT_TEMPLATE_VERSION = '2026-06-09-video-scoring-v1';
 
 export interface NativeIndustryDefinition {
   id: NativeIndustry;
@@ -87,7 +87,7 @@ export const SEEDANCE_VC_ROUTER_PROMPT =
   'Seedance Prompt Router：先在内部判断场景适配度、表达方式和信息密度，再决定直传、轻改、重写、追问或保留。用户明确要求、对白、旁白、音乐、音效、字幕策略、产品露出和品牌限制是硬约束，不能为了优化画面而删除。';
 
 export const REFERENCE_POLICY_PROMPT =
-  '参考素材策略：商品图优先保持外观、颜色、包装和文字不变形；人物图只参考长相、发型、服装和年龄感；参考视频只借主体位置、动作节奏、镜头连续性和衔接，不复制具体人物身份、场景和画面；无参考素材时必须基于脚本和分镜生成，不要声称参考了不存在的视频或图片。';
+  '参考素材策略：商品图优先保持外观、颜色、包装和文字不变形；人物图只参考长相、发型、服装和年龄感；参考图只用于稳定人物、商品、场景或风格锚点；参考音频只借节奏、语气、情绪或音效氛围，不直接复刻原音频内容；参考视频只借主体位置、动作节奏、镜头连续性和衔接，不复制具体人物身份、场景和画面；无参考素材时必须基于脚本和分镜生成，不要声称参考了不存在的视频、图片或音频。';
 
 export const SEEDANCE_PROMPT_CARD_PROMPT =
   'SeedancePromptCard 正文必须包含 visualAnchor、behaviorState、localTone、videoTheme、referencePolicy、preservedConstraints、forbidden、repairHint；seedancePrompt 要能直接传给 Seedance 生成视频。';
@@ -97,6 +97,12 @@ export const AD_QUALITY_RUBRIC_PROMPT =
 
 export const SEEDANCE_SINGLE_CALL_DURATION_PROMPT =
   'Seedance 单次生成时长约束：所有会作为视频生成接口 durationSec 的片段必须在 4-15 秒；不足 4 秒的镜头必须合并到相邻片段，超过 15 秒的镜头必须拆成多个连续片段，禁止输出 1-3 秒或超过 15 秒的生成片段。';
+
+const VIDEO_SCORING_CATEGORY_LABELS: Record<AdVideoScoringCategory, string> = {
+  brand: '品牌广告',
+  performance: '买量广告',
+  creative: '创意广告',
+};
 
 export const WORKFLOW_PROMPT_DEFINITIONS = {
   'explosion.script_parse': {
@@ -219,21 +225,42 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     description: '输出可直接预览和复用的爆款广告脚本。',
     variables: ['optimizedTemplateJson', 'researchJson', 'decompositionJson', 'analysisJson', 'variantCount', 'durationSec', 'format'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}请根据优化行业模板、联网补充、需求拆解和策略分析，输出 {variantCount} 条可投放方向不同的爆款广告脚本，目标时长 {durationSec}s，脚本形式 {format}。不要输出推理链；每条脚本必须遵守优化模板中的公式、模块和合规规则，并有强钩子、痛点/欲望、卖点、证据或场景背书、自然 CTA。可使用联网补充里的产品信息和热梗，但必须自然、不过时、不冒犯、不声称未经验证的事实。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}短视频脚本要给出 timeSec beats 和可拍画面建议；信息流文案要给出标题、正文和按钮建议；直播口播要给出节奏段落和逼单点。优化模板：{optimizedTemplateJson}\n联网补充：{researchJson}\n需求拆解：{decompositionJson}\n策略分析：{analysisJson}\n只输出 JSON：{"scripts":[{"index":1,"title":"...","angle":"差异化角度","templateLogic":"本条如何使用行业模板","hook":"首句/首秒钩子","script":"完整脚本文案","voiceover":"可口播文本","visualNotes":["画面建议或卡片元素"],"beats":[{"timeSec":0,"text":"首秒钩子","intent":"停留"},{"timeSec":3,"text":"卖点","intent":"兴趣"}],"cta":"...","riskControl":"..."}],"summary":"整体投放建议"}。`,
+      `${PRIVATE_REASONING_PROMPT}请根据优化行业模板、联网补充、需求拆解和策略分析，输出 {variantCount} 条可投放方向不同的爆款广告脚本，目标时长 {durationSec}s，脚本形式 {format}。开启高强度思考，但不要输出推理链；每条脚本必须遵守优化模板中的公式、模块和合规规则，并有强钩子、清晰卖点、自然转化和可执行表达。可使用联网补充里的产品信息和热梗，但必须自然、不过时、不冒犯、不声称未经验证的事实。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}最终脚本产物只保留“完整广告文案/脚本”本身，不要再输出节奏 beats、画面建议、CTA 字段、风险控制字段或其他拆分字段。优化模板：{optimizedTemplateJson}\n联网补充：{researchJson}\n需求拆解：{decompositionJson}\n策略分析：{analysisJson}\n只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整广告文案/脚本"}],"summary":"整体投放建议"}。`,
+  },
+  'video_scoring.brand_score': {
+    title: '品牌广告打分',
+    description: '基于品牌广告维度评估完整视频，输出分数、证据、分析和建议。',
+    variables: ['bgmAnalysisText'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}你是品牌广告评估专家。先过合规红线，再观看完整视频（这是一条品牌广告，目标=心智渗透与品牌好感）。直接输入完整视频，不要抽帧。结合以下本地 BGM 音乐分析结果判断配乐是否与品牌氛围、节奏和记忆点匹配：{bgmAnalysisText}。对以下维度各打 0-100 分，并给出对应证据时间点。若合规不通过，仍需返回可展示的局部结果：category、compliancePass=false、complianceIssues、analysis、suggestions，可将 dimensionScores 置为空对象。维度包括：品牌露出与一致性、制作精良度、情感叙事与好感度、黄金3秒吸引力、新颖度差异化。评分倾向：品牌露出与一致性 > 制作精良度 > 情感叙事与好感度 > 黄金3秒吸引力 ≈ 新颖度差异化。只输出 JSON：{"category":"brand","compliancePass":true,"complianceIssues":["..."],"dimensionScores":{"品牌露出与一致性":0,"制作精良度":0,"情感叙事与好感度":0,"黄金3秒吸引力":0,"新颖度差异化":0},"evidence":{"品牌露出与一致性":"时间点+依据"},"analysis":"整体分析（品牌资产视角）","suggestions":["可执行优化建议1","建议2"]}。`,
+  },
+  'video_scoring.performance_score': {
+    title: '买量广告打分',
+    description: '基于买量广告维度评估完整视频，输出分数、证据、分析和建议。',
+    variables: ['bgmAnalysisText'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}你是买量广告（效果广告）评估专家。先过合规红线，再观看完整视频（这是一条买量广告，目标=促成下载或购买转化）。直接输入完整视频，不要抽帧。结合以下本地 BGM 音乐分析结果判断配乐是否支撑首秒吸引、转化节奏和 CTA 压力：{bgmAnalysisText}。对以下维度各打 0-100 分，并给出对应证据时间点。若合规不通过，仍需返回可展示的局部结果：category、compliancePass=false、complianceIssues、analysis、suggestions，可将 dimensionScores 置为空对象。维度包括：黄金3秒钩子、内容信任力、利益点与诱惑力、CTA与转化行动力、转化链路流畅度、制作合格度。评分倾向：黄金3秒钩子 ≈ CTA与转化行动力 > 利益点与诱惑力 > 内容信任力 ≈ 转化链路流畅度 > 制作合格度。只输出 JSON：{"category":"performance","compliancePass":true,"complianceIssues":["..."],"dimensionScores":{"黄金3秒钩子":0,"内容信任力":0,"利益点与诱惑力":0,"CTA与转化行动力":0,"转化链路流畅度":0,"制作合格度":0},"evidence":{"黄金3秒钩子":"时间点+依据"},"analysis":"整体分析（转化链路视角）","suggestions":["可执行优化建议1","建议2"]}。`,
+  },
+  'video_scoring.creative_score': {
+    title: '创意广告打分',
+    description: '基于创意广告维度评估完整视频，输出分数、证据、分析和建议。',
+    variables: ['bgmAnalysisText'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}你是创意广告评估专家。先过合规红线，再观看完整视频（这是一条创意广告，目标=记忆点与自传播）。直接输入完整视频，不要抽帧。结合以下本地 BGM 音乐分析结果判断配乐是否强化创意节奏、情绪张力与记忆点：{bgmAnalysisText}。对以下维度各打 0-100 分，并给出对应证据时间点。若合规不通过，仍需返回可展示的局部结果：category、compliancePass=false、complianceIssues、analysis、suggestions，可将 dimensionScores 置为空对象。维度包括：新颖度创意跳跃度、黄金3秒吸引力、节奏与紧凑度、记忆点传播性、情绪共鸣度、信息传达清晰度。评分倾向：新颖度创意跳跃度 > 黄金3秒吸引力 > 节奏与紧凑度 ≈ 记忆点传播性 > 情绪共鸣度 > 信息传达清晰度。只输出 JSON：{"category":"creative","compliancePass":true,"complianceIssues":["..."],"dimensionScores":{"新颖度创意跳跃度":0,"黄金3秒吸引力":0,"节奏与紧凑度":0,"记忆点传播性":0,"情绪共鸣度":0,"信息传达清晰度":0},"evidence":{"新颖度创意跳跃度":"时间点+依据"},"analysis":"整体分析（创意与传播视角）","suggestions":["可执行优化建议1","建议2"]}。`,
   },
   'native.concept_plan': {
     title: '行业概念规划',
     description: '按行业策略矩阵生成爆款广告创意方案。',
     variables: ['industryTitle', 'formula', 'durationRange', 'requiredModules', 'complianceFocus', 'brief', 'productName', 'variantCount', 'durationSec', 'ratio'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}为{industryTitle}行业生成 {variantCount} 条原生爆款广告概念。行业公式：{formula}。目标时长：{durationSec}s，规格：{ratio}，行业建议时长：{durationRange}。必备模块：{requiredModules}。合规重点：{complianceFocus}。产品：{productName}。创意简报：{brief}。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}${AD_QUALITY_RUBRIC_PROMPT}只输出 JSON：{"concepts":[{"index":1,"title":"...","materialFormula":"行业公式如何落到本条素材","hook":"首秒可视化钩子","firstSecondHook":"0-1s 画面","audience":"...","sellingPoints":["..."],"proofPoint":"可信证据或使用场景","modules":["..."],"cta":"...","tone":"...","noveltyAngle":"差异化角度","commodityAssetFit":"商品/资产匹配说明","riskControl":"合规规避策略"}]}。`,
+      `${PRIVATE_REASONING_PROMPT}为{industryTitle}行业生成 {variantCount} 条原生爆款广告概念。行业公式：{formula}。目标时长：{durationSec}s，规格：{ratio}，行业建议时长：{durationRange}。必备模块：{requiredModules}。合规重点：{complianceFocus}。产品：{productName}。广告文案脚本：{brief}。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}${AD_QUALITY_RUBRIC_PROMPT}只输出 JSON：{"concepts":[{"index":1,"title":"...","materialFormula":"行业公式如何落到本条素材","hook":"首秒可视化钩子","firstSecondHook":"0-1s 画面","audience":"...","sellingPoints":["..."],"proofPoint":"可信证据或使用场景","modules":["..."],"cta":"...","tone":"...","noveltyAngle":"差异化角度","commodityAssetFit":"商品/资产匹配说明","riskControl":"合规规避策略"}]}。`,
   },
   'native.script_writer': {
     title: '行业脚本生成',
     description: '把创意方案写成可投放广告脚本。',
     variables: ['industryTitle', 'brief', 'conceptsJson', 'durationSec'],
     defaultPrompt:
-      `${PRIVATE_REASONING_PROMPT}基于{industryTitle}行业策略，把概念写成 {durationSec}s 原生广告脚本。${AD_CREATIVE_STRUCTURE_PROMPT}${SEEDANCE_SINGLE_CALL_DURATION_PROMPT}若总时长超过 15s，请按 Seedance 可生成片段规划节奏，每段 4-15s，例如 25s 拆为 15s + 10s。口播要短句化、可配音、避免堆砌形容词，CTA 自然但明确；证据点必须来自输入或合理使用场景，不编造不可证明承诺。创意简报：{brief}。概念：{conceptsJson}。只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整口播/字幕脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","hookType":"pain|benefit|conflict|spectacle|story","riskControl":"...","beats":[{"timeSec":0,"text":"首秒钩子"},{"timeSec":3,"text":"卖点或证据"}]}]}。`,
+      `${PRIVATE_REASONING_PROMPT}基于{industryTitle}行业策略，把概念写成 {durationSec}s 原生广告脚本。${AD_CREATIVE_STRUCTURE_PROMPT}${SEEDANCE_SINGLE_CALL_DURATION_PROMPT}若总时长超过 15s，请按 Seedance 可生成片段规划节奏，每段 4-15s，例如 25s 拆为 15s + 10s。口播要短句化、可配音、避免堆砌形容词，CTA 自然但明确；证据点必须来自输入或合理使用场景，不编造不可证明承诺。广告文案脚本：{brief}。概念：{conceptsJson}。只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整口播/字幕脚本","voiceover":"可用于 TTS 的口播文本","cta":"...","hookType":"pain|benefit|conflict|spectacle|story","riskControl":"...","beats":[{"timeSec":0,"text":"首秒钩子"},{"timeSec":3,"text":"卖点或证据"}]}]}。`,
   },
   'native.storyboard_builder': {
     title: '分镜构建',
@@ -347,6 +374,22 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
       { id: 'requirement_decompose', title: '需求拆解', description: '基于优化模板拆解产品、人群、卖点、平台和约束。', artifact: 'requirement.json', promptIds: ['copywriting.requirement_decompose'] },
       { id: 'strategy_analysis', title: '策略分析', description: '选择钩子、转化路径和爆款脚本结构。', artifact: 'analysis.json', promptIds: ['copywriting.strategy_analysis'] },
       { id: 'script_writer', title: '爆款脚本', description: '生成多条可投放脚本并入库为文案素材。', artifact: 'scripts.md', promptIds: ['copywriting.script_writer'] },
+    ],
+  },
+  video_scoring: {
+    type: 'video_scoring',
+    title: '广告视频打分',
+    description: '对完整广告视频进行分类型评分，并输出证据、分析与优化建议。',
+    nodes: [
+      { id: 'ingest', title: '素材导入', description: '规范化本地视频输入，准备 source.mp4。', artifact: 'source.mp4', promptIds: [] },
+      {
+        id: 'score',
+        title: '视频评分',
+        description: `按广告类型（${VIDEO_SCORING_CATEGORY_LABELS.brand} / ${VIDEO_SCORING_CATEGORY_LABELS.performance} / ${VIDEO_SCORING_CATEGORY_LABELS.creative}）对完整视频直接打分。`,
+        artifact: 'score.json',
+        promptIds: ['video_scoring.brand_score', 'video_scoring.performance_score', 'video_scoring.creative_score'],
+      },
+      { id: 'report_writer', title: '结果整理', description: '把结构化评分整理为可读报告并登记到素材库。', artifact: 'report.md', promptIds: [] },
     ],
   },
   lark_download: {

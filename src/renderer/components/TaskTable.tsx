@@ -13,7 +13,14 @@ import {
 
 import { api } from '../ipc.js';
 import { useTasksStore } from '../stores/tasks-store.js';
-import type { StepStatus, TaskRecord, TaskStep, TaskType } from '../../shared/types.js';
+import {
+  VIDEO_SCORING_CATEGORY_DEFINITIONS,
+  type AdVideoScoringCategory,
+  type StepStatus,
+  type TaskRecord,
+  type TaskStep,
+  type TaskType,
+} from '../../shared/types.js';
 
 const TASK_TYPE_LABEL: Record<TaskType, string> = {
   explosion: '爆款裂变',
@@ -21,6 +28,7 @@ const TASK_TYPE_LABEL: Record<TaskType, string> = {
   avatar: '数字人口播',
   native: '原生爆款',
   copywriting: '文案脚本',
+  video_scoring: '视频打分',
   lark_download: '飞书下载',
 };
 
@@ -99,6 +107,11 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     strategy_analysis: '策略分析',
     script_writer: '爆款脚本',
   },
+  video_scoring: {
+    ingest: '素材导入',
+    score: '视频评分',
+    report_writer: '结果整理',
+  },
   lark_download: {
     download: '视频下载',
   },
@@ -126,6 +139,9 @@ interface RecordValue {
 }
 
 const PREVIEWABLE_EXTENSIONS = new Set(['csv', 'json', 'log', 'md', 'srt', 'txt', 'vtt']);
+const VIDEO_SCORING_CATEGORY_LABEL: Record<AdVideoScoringCategory, string> = Object.fromEntries(
+  VIDEO_SCORING_CATEGORY_DEFINITIONS.map((definition) => [definition.value, definition.label]),
+) as Record<AdVideoScoringCategory, string>;
 
 function formatTime(value?: number): string {
   if (value === undefined) {
@@ -195,6 +211,60 @@ function readRecordArray(value: unknown): RecordValue[] {
     return [];
   }
   return value.filter(isRecord);
+}
+
+function readStringRecord(value: unknown): Record<string, string> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim().length > 0)
+      .map(([key, item]) => [key.trim(), item.trim()]),
+  );
+}
+
+function readScoreEntries(value: unknown): Array<{ label: string; score: number }> {
+  if (!isRecord(value)) {
+    return [];
+  }
+  return Object.entries(value)
+    .map(([label, score]) => ({ label: label.trim(), score: readNumber(score) }))
+    .filter((item): item is { label: string; score: number } => item.label.length > 0 && item.score !== undefined);
+}
+
+function readMetricTriplet(value: unknown): { mean: number; min: number; max: number } | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const mean = readNumber(value.mean);
+  const min = readNumber(value.min);
+  const max = readNumber(value.max);
+  if (mean === undefined || min === undefined || max === undefined) {
+    return null;
+  }
+  return { mean, min, max };
+}
+
+function readBgmMetricEntries(value: unknown): Array<{ label: string; metric: { mean: number; min: number; max: number } }> {
+  if (!isRecord(value)) {
+    return [];
+  }
+  const metricLabelMap: Record<string, string> = {
+    rms: 'RMS',
+    energy: '能量',
+    zcr: '过零率',
+    spectralCentroid: '频谱质心',
+    spectralFlatness: '频谱平坦度',
+    spectralSpread: '频谱扩展',
+    spectralRolloff: '滚降频率',
+  };
+  return Object.entries(value)
+    .map(([key, metric]) => ({
+      label: metricLabelMap[key] ?? key,
+      metric: readMetricTriplet(metric),
+    }))
+    .filter((item): item is { label: string; metric: { mean: number; min: number; max: number } } => item.metric !== null);
 }
 
 function parseJsonPreview(content: string): unknown | undefined {
@@ -525,6 +595,185 @@ function CopywritingVisualPreview({ step, content }: { step: TaskStep; content: 
   return <div className="copywriting-visual">{render(data)}</div>;
 }
 
+function buildRadarPoints(items: Array<{ label: string; score: number }>, center: number, radius: number): string {
+  return items
+    .map((item, index) => {
+      const angle = (-Math.PI / 2) + (index / items.length) * Math.PI * 2;
+      const valueRadius = (item.score / 100) * radius;
+      const x = center + Math.cos(angle) * valueRadius;
+      const y = center + Math.sin(angle) * valueRadius;
+      return `${x},${y}`;
+    })
+    .join(' ');
+}
+
+function buildRadarAxisPoint(index: number, total: number, center: number, radius: number): { x: number; y: number } {
+  const angle = (-Math.PI / 2) + (index / total) * Math.PI * 2;
+  return {
+    x: center + Math.cos(angle) * radius,
+    y: center + Math.sin(angle) * radius,
+  };
+}
+
+function VideoScoringRadar({ items }: { items: Array<{ label: string; score: number }> }) {
+  if (items.length < 3) {
+    return null;
+  }
+  const size = 280;
+  const center = size / 2;
+  const radius = 88;
+  const rings = [25, 50, 75, 100];
+  return (
+    <div className="video-scoring-radar">
+      <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label="广告视频评分雷达图">
+        {rings.map((ring) => (
+          <polygon
+            key={ring}
+            points={items
+              .map((_, index) => {
+                const point = buildRadarAxisPoint(index, items.length, center, (ring / 100) * radius);
+                return `${point.x},${point.y}`;
+              })
+              .join(' ')}
+            className="video-scoring-radar-ring"
+          />
+        ))}
+        {items.map((item, index) => {
+          const point = buildRadarAxisPoint(index, items.length, center, radius);
+          return (
+            <g key={item.label}>
+              <line x1={center} y1={center} x2={point.x} y2={point.y} className="video-scoring-radar-axis" />
+              <text x={point.x} y={point.y} className="video-scoring-radar-label">
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+        <polygon points={buildRadarPoints(items, center, radius)} className="video-scoring-radar-area" />
+      </svg>
+    </div>
+  );
+}
+
+function renderVideoScoring(data: RecordValue) {
+  const scoreEntries = readScoreEntries(data.dimensionScores).sort((left, right) => right.score - left.score);
+  const evidence = readStringRecord(data.evidence);
+  const complianceIssues = readStringArray(data.complianceIssues);
+  const bgmAnalysis = isRecord(data.bgmAnalysis) ? data.bgmAnalysis : null;
+  const bgmMetrics = readBgmMetricEntries(bgmAnalysis?.metrics);
+  const bgmAvailable = bgmAnalysis?.available === true;
+  const categoryValue = readString(data.category, '') as AdVideoScoringCategory | '';
+  const categoryLabel =
+    categoryValue && categoryValue in VIDEO_SCORING_CATEGORY_LABEL
+      ? VIDEO_SCORING_CATEGORY_LABEL[categoryValue as AdVideoScoringCategory]
+      : '未知类型';
+  const compliancePass = typeof data.compliancePass === 'boolean' ? data.compliancePass : true;
+  return (
+    <div className="video-scoring-visual">
+      <div className="copywriting-visual-hero">
+        <div>
+          <span>广告类型</span>
+          <strong>{categoryLabel}</strong>
+        </div>
+        <Tag className={`video-scoring-status-tag ${compliancePass ? 'pass' : 'blocked'}`}>
+          {compliancePass ? '合规通过' : '合规未通过'}
+        </Tag>
+      </div>
+      <div className="copywriting-visual-grid">
+        <VisualMetric label="维度数" value={scoreEntries.length} />
+        <VisualMetric label="证据数" value={Object.keys(evidence).length} />
+        <VisualMetric label="建议数" value={readStringArray(data.suggestions).length} />
+      </div>
+      {bgmAnalysis ? (
+        <VisualSection title="BGM 音乐分析">
+          <div className="video-scoring-bgm-summary">
+            <Tag className={`video-scoring-status-tag ${bgmAvailable ? 'pass' : 'blocked'}`}>
+              {bgmAvailable ? '已分析' : '未分析'}
+            </Tag>
+            <p>{readString(bgmAnalysis.summary, '暂无 BGM 分析结果')}</p>
+          </div>
+          {bgmAvailable ? (
+            <div className="copywriting-visual-grid">
+              <VisualMetric label="采样率" value={`${readNumber(bgmAnalysis.sampleRate) ?? 0}Hz`} />
+              <VisualMetric label="时长" value={`${readNumber(bgmAnalysis.durationSec) ?? 0}s`} />
+              <VisualMetric label="分析帧数" value={readNumber(bgmAnalysis.frameCount) ?? 0} />
+            </div>
+          ) : null}
+          {bgmMetrics.length > 0 ? (
+            <div className="video-scoring-bgm-metrics">
+              {bgmMetrics.map((item) => (
+                <div key={item.label} className="video-scoring-bgm-metric">
+                  <strong>{item.label}</strong>
+                  <span>均值 {item.metric.mean}</span>
+                  <span>最小 {item.metric.min}</span>
+                  <span>最大 {item.metric.max}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </VisualSection>
+      ) : null}
+      {complianceIssues.length > 0 ? (
+        <VisualSection title="合规问题">
+          <TextList items={complianceIssues} />
+        </VisualSection>
+      ) : null}
+      {scoreEntries.length > 0 ? (
+        <div className="video-scoring-chart-grid">
+          <VisualSection title="维度雷达图">
+            <VideoScoringRadar items={scoreEntries} />
+          </VisualSection>
+          <VisualSection title="维度条形图">
+            <div className="video-scoring-bar-list">
+              {scoreEntries.map((item) => (
+                <div key={item.label} className="video-scoring-bar-item">
+                  <div className="video-scoring-bar-copy">
+                    <span>{item.label}</span>
+                    <strong>{item.score}</strong>
+                  </div>
+                  <div className="video-scoring-bar-track">
+                    <div className="video-scoring-bar-fill" style={{ width: `${item.score}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </VisualSection>
+        </div>
+      ) : (
+        <VisualSection title="评分结果">
+          <Typography.Text className="copywriting-empty">当前结果未返回可展示的维度分数。</Typography.Text>
+        </VisualSection>
+      )}
+      {Object.keys(evidence).length > 0 ? (
+        <VisualSection title="证据时间点">
+          <div className="video-scoring-evidence-list">
+            {Object.entries(evidence).map(([label, detail]) => (
+              <div key={label} className="video-scoring-evidence-item">
+                <strong>{label}</strong>
+                <span>{detail}</span>
+              </div>
+            ))}
+          </div>
+        </VisualSection>
+      ) : null}
+      <VisualSection title="整体分析">
+        <p>{readString(data.analysis)}</p>
+      </VisualSection>
+      <VisualSection title="优化建议">
+        <TextList items={readStringArray(data.suggestions)} empty="未提供优化建议" />
+      </VisualSection>
+    </div>
+  );
+}
+
+export function VideoScoringVisualPreview({ content }: { content: string }) {
+  const data = parseJsonPreview(content);
+  if (!isRecord(data)) {
+    return null;
+  }
+  return renderVideoScoring(data);
+}
+
 function TaskStatusCell({ task }: { task: TaskRecord }) {
   return (
     <div className="task-status-cell">
@@ -788,6 +1037,9 @@ function StepOutput({ task, step }: { task: TaskRecord; step: TaskStep }) {
             ) : null}
             {task.type === 'copywriting' && getExtension(preview.path) === 'json' ? (
               <CopywritingVisualPreview step={step} content={preview.content} />
+            ) : null}
+            {task.type === 'video_scoring' && getExtension(preview.path) === 'json' ? (
+              <VideoScoringVisualPreview content={preview.content} />
             ) : null}
             <pre className="artifact-preview">{preview.content}</pre>
           </div>

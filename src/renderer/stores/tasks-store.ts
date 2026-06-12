@@ -17,6 +17,31 @@ interface TasksState {
   applyProgress(event: TaskProgressEvent): void;
 }
 
+let refreshInFlight: Promise<void> | undefined;
+let refreshQueued = false;
+
+function requestOutputsRefresh(set: (partial: Partial<TasksState>) => void): Promise<void> {
+  if (refreshInFlight !== undefined) {
+    refreshQueued = true;
+    return refreshInFlight;
+  }
+
+  refreshInFlight = api.task
+    .list()
+    .then((tasks) => {
+      set({ tasks });
+    })
+    .finally(() => {
+      refreshInFlight = undefined;
+      if (refreshQueued) {
+        refreshQueued = false;
+        void requestOutputsRefresh(set);
+      }
+    });
+
+  return refreshInFlight;
+}
+
 function stepStatusFromProgress(task: TaskRecord, step: TaskStep, stepName: string, event: TaskProgressEvent): StepStatus {
   if (event.status === 'success') {
     return 'success';
@@ -48,7 +73,13 @@ function updateStepFromProgress(task: TaskRecord, step: TaskStep, event: TaskPro
     ...step,
     status: stepStatusFromProgress(task, step, event.step, event),
   };
-  if (step.step === event.step && event.message !== undefined) {
+  if (step.step === event.step && event.logs !== undefined) {
+    next.logs = event.logs;
+  } else if (
+    step.step === event.step &&
+    event.message !== undefined &&
+    (event.status === 'paused' || event.status === 'failed' || event.status === 'waiting_confirmation')
+  ) {
     next.logs = event.message;
   }
   if (step.step === event.step && event.artifactPath !== undefined) {
@@ -105,11 +136,19 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         }
         const steps = task.steps.map((step) => updateStepFromProgress(task, step, event));
         const next: TaskRecord = { ...task, status: event.status, progress: event.progress, steps };
-        if (event.message !== undefined) {
+        if (
+          event.message !== undefined &&
+          (event.status === 'paused' || event.status === 'failed' || event.status === 'canceled')
+        ) {
           next.error = event.message;
+        } else if (event.status !== 'paused' && event.status !== 'failed' && event.status !== 'canceled') {
+          delete next.error;
         }
         return next;
       }),
     });
+    if (event.refreshOutputs) {
+      void requestOutputsRefresh(set);
+    }
   },
 }));

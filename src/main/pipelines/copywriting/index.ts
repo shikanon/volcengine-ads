@@ -112,19 +112,7 @@ interface StrategyAnalysis {
 interface CopywritingScript {
   index: number;
   title: string;
-  angle: string;
-  templateLogic?: string;
-  hook: string;
   script: string;
-  voiceover?: string;
-  visualNotes?: string[];
-  beats?: Array<{
-    timeSec: number;
-    text: string;
-    intent?: string;
-  }>;
-  cta: string;
-  riskControl?: string;
 }
 
 interface ScriptBundle {
@@ -253,8 +241,8 @@ function ensureScriptBundle(value: ScriptBundle): ScriptBundle {
   if (!Array.isArray(value.scripts) || value.scripts.length === 0) {
     throw new AppError('E_MODEL_API_FAILED', '广告文案脚本为空');
   }
-  if (value.scripts.some((script) => !script.title || !script.hook || !script.script)) {
-    throw new AppError('E_MODEL_API_FAILED', '广告文案脚本缺少标题、钩子或正文');
+  if (value.scripts.some((script) => !script.title || !script.script)) {
+    throw new AppError('E_MODEL_API_FAILED', '广告文案脚本缺少标题或正文');
   }
   return value;
 }
@@ -268,6 +256,30 @@ function listLines(items: string[] | undefined): string {
 
 function compactText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+function resolveRequirementContext(input: CopywritingInput): string {
+  if (typeof input.requirement === 'string' && input.requirement.trim().length > 0) {
+    return input.requirement.trim();
+  }
+
+  const knownFacts = [
+    input.productName ? `产品名称：${input.productName}` : '产品名称：未提供',
+    input.audience ? `目标人群：${input.audience}` : '目标人群：未提供',
+    input.platform ? `投放平台：${input.platform}` : '投放平台：未提供',
+    `脚本形式：${input.format}`,
+    `目标时长：${input.durationSec}s`,
+    input.industry === 'auto' ? '行业模板：智能匹配' : `行业模板：${input.industry}`,
+    input.enableWebSearch === false
+      ? '联网补充：关闭'
+      : '联网补充：开启，可结合联网搜索推断卖点、场景与平台语境',
+  ];
+  return [
+    '用户未填写文案需求。',
+    '请优先根据已提供的产品名称、目标人群、投放平台、脚本形式和行业模板自行推断广告目标、核心卖点、场景与表达风格。',
+    '若信息不足且已启用联网补充，可结合联网搜索做保守、通用、可执行的推断，但不要编造未经验证的具体事实。',
+    knownFacts.join('；'),
+  ].join('\n');
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -344,30 +356,11 @@ function renderScriptsMarkdown(params: {
   const { input, route, template, research, decomposition, analysis, bundle } = params;
   const scripts = bundle.scripts
     .map((script) => {
-      const beats =
-        script.beats && script.beats.length > 0
-          ? script.beats
-              .map((beat) => `- ${beat.timeSec}s：${beat.text}${beat.intent ? `（${beat.intent}）` : ''}`)
-              .join('\n')
-          : '- 未提供';
       return [
         `## ${script.index}. ${script.title}`,
         '',
-        `**角度**：${script.angle}`,
-        script.templateLogic ? `**模板使用**：${script.templateLogic}` : undefined,
-        `**钩子**：${script.hook}`,
-        `**CTA**：${script.cta}`,
-        script.riskControl ? `**风险控制**：${script.riskControl}` : undefined,
-        '',
-        '### 完整脚本',
+        '### 完整广告文案',
         script.script,
-        '',
-        script.voiceover ? ['### 口播文本', script.voiceover, ''].join('\n') : undefined,
-        script.visualNotes && script.visualNotes.length > 0
-          ? ['### 画面/素材建议', listLines(script.visualNotes), ''].join('\n')
-          : undefined,
-        '### 节奏 Beats',
-        beats,
       ]
         .filter((line): line is string => line !== undefined)
         .join('\n');
@@ -445,6 +438,7 @@ async function runTemplateOptimize(ctx: StepContext<CopywritingInput>) {
   const route = await readJson<CopywritingIndustryRoute>(
     artifactPath(ctx.artifactDir, 'industry.json'),
   );
+  const requirement = resolveRequirementContext(ctx.input);
   const response = await ctx.modelClient.chat(
     [
       {
@@ -459,7 +453,7 @@ async function runTemplateOptimize(ctx: StepContext<CopywritingInput>) {
           durationRange: route.durationRange,
           requiredModules: route.requiredModules.join('、'),
           complianceFocus: route.complianceFocus,
-          requirement: ctx.input.requirement,
+          requirement,
           productName: ctx.input.productName ?? '未提供',
           audience: ctx.input.audience ?? '未提供',
           platform: ctx.input.platform ?? '未提供',
@@ -486,10 +480,11 @@ async function runWebResearch(ctx: StepContext<CopywritingInput>) {
   const template = await readJson<OptimizedIndustryTemplate>(
     artifactPath(ctx.artifactDir, 'template.json'),
   );
+  const requirement = resolveRequirementContext(ctx.input);
   const query = workflowPrompt(ctx, 'copywriting.web_research', {
     industryTitle: route.title,
     optimizedTemplateJson: JSON.stringify(template),
-    requirement: ctx.input.requirement,
+    requirement,
     productName: ctx.input.productName ?? '未提供',
     audience: ctx.input.audience ?? '未提供',
     platform: ctx.input.platform ?? '未提供',
@@ -535,6 +530,7 @@ async function runRequirementDecompose(ctx: StepContext<CopywritingInput>) {
   const research = await readJson<ResearchEnrichment>(
     artifactPath(ctx.artifactDir, 'research.json'),
   );
+  const requirement = resolveRequirementContext(ctx.input);
   const response = await ctx.modelClient.chat(
     [
       {
@@ -547,7 +543,7 @@ async function runRequirementDecompose(ctx: StepContext<CopywritingInput>) {
           industryTemplateJson: JSON.stringify(route),
           optimizedTemplateJson: JSON.stringify(template),
           researchJson: JSON.stringify(research),
-          requirement: ctx.input.requirement,
+          requirement,
           productName: ctx.input.productName ?? '未提供',
           audience: ctx.input.audience ?? '未提供',
           platform: ctx.input.platform ?? '未提供',
@@ -577,6 +573,7 @@ async function runStrategyAnalysis(ctx: StepContext<CopywritingInput>) {
   const decomposition = await readJson<RequirementDecomposition>(
     artifactPath(ctx.artifactDir, 'requirement.json'),
   );
+  const requirement = resolveRequirementContext(ctx.input);
   const response = await ctx.modelClient.chat(
     [
       {
@@ -586,7 +583,7 @@ async function runStrategyAnalysis(ctx: StepContext<CopywritingInput>) {
       {
         role: 'user',
         content: workflowPrompt(ctx, 'copywriting.strategy_analysis', {
-          requirement: ctx.input.requirement,
+          requirement,
           optimizedTemplateJson: JSON.stringify(template),
           researchJson: JSON.stringify(research),
           decompositionJson: JSON.stringify(decomposition),
