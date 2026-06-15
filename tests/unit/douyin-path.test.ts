@@ -110,10 +110,10 @@ describe('douyin yt-dlp path', () => {
 
   it('stores chrome cookies in a stable userData cache file', () => {
     expect(resolveChromeCookieCachePath('/tmp/volcengine-ads')).toBe(
-      '/tmp/volcengine-ads/cookies/yt-dlp-chrome-cookies.txt',
+      join('/tmp/volcengine-ads', 'cookies', 'yt-dlp-chrome-cookies.txt'),
     );
     expect(resolveChromeCookieCacheFallbackPath('/tmp/volcengine-ads')).toBe(
-      '/tmp/volcengine-ads/yt-dlp-cache/yt-dlp-chrome-cookies.txt',
+      join('/tmp/volcengine-ads', 'yt-dlp-cache', 'yt-dlp-chrome-cookies.txt'),
     );
   });
 
