@@ -8,8 +8,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildYtDlpArgs,
   buildYtDlpCookieExportArgs,
+  buildYtDlpCookieHeaderArgs,
   buildYtDlpCookieFileArgs,
   explainDouyinDownloadFailure,
+  normalizeDouyinCookieHeader,
   normalizeDouyinUrlInput,
   resolveChromeCookieCacheFallbackPath,
   resolveChromeCookieCachePath,
@@ -52,6 +54,14 @@ describe('douyin yt-dlp path', () => {
     ).toBe('https://v.douyin.com/4nWmGRefBWQ/');
   });
 
+  it('converts douyin search modal links into canonical video urls', () => {
+    expect(
+      normalizeDouyinUrlInput(
+        'https://www.douyin.com/jingxuan/search/%E7%81%AF%E9%A5%B0?aid=8483d103-7222-4b30-b2d0-e5c55b3d6aae&modal_id=6845191409901817091&type=general',
+      ),
+    ).toBe('https://www.douyin.com/video/6845191409901817091');
+  });
+
   it('maps fresh-cookies failures to an actionable detail message', () => {
     expect(
       explainDouyinDownloadFailure(
@@ -59,7 +69,7 @@ describe('douyin yt-dlp path', () => {
           'ERROR: [Douyin] 7647393544173158821: Fresh cookies (not necessarily logged in) are needed',
         ),
       ),
-    ).toContain('fresh cookies');
+    ).toContain('重新登录抖音');
     expect(
       explainDouyinDownloadFailure(
         new Error('WARNING: [Douyin] Failed to parse JSON\nDownloading web detail JSON'),
@@ -137,6 +147,26 @@ describe('douyin yt-dlp path', () => {
       '--no-playlist',
       'https://v.douyin.com/abc/',
     ]);
+    expect(
+      buildYtDlpCookieHeaderArgs(
+        '/tmp/source.mp4',
+        'https://v.douyin.com/abc/',
+        'Cookie: sessionid=abc; ttwid=def',
+      ),
+    ).toEqual([
+      '--add-header',
+      'Cookie: sessionid=abc; ttwid=def',
+      '-o',
+      '/tmp/source.mp4',
+      '--no-playlist',
+      'https://v.douyin.com/abc/',
+    ]);
+  });
+
+  it('normalizes configured cookie headers copied from chrome devtools', () => {
+    expect(
+      normalizeDouyinCookieHeader('Cookie: sessionid=abc;\n  ttwid=def; passport_csrf_token=ghi'),
+    ).toBe('sessionid=abc; ttwid=def; passport_csrf_token=ghi');
   });
 
   it('refreshes the cached cookie file only for auth-like failures', () => {

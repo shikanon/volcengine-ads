@@ -244,6 +244,7 @@ function buildStoryboardPrompt(
 }
 
 async function runDownload(ctx: StepContext<ExplosionInput>) {
+  const douyinCookie = ctx.repository.getSetting('douyinCookie');
   const result =
     ctx.input.sourceVideoPath !== undefined
       ? {
@@ -257,7 +258,11 @@ async function runDownload(ctx: StepContext<ExplosionInput>) {
           ),
           metaPath: artifactPath(ctx.artifactDir, 'meta.json'),
         }
-      : await downloadDouyinVideo(ctx.input.douyinUrl ?? '', ctx.artifactDir);
+      : douyinCookie !== undefined
+        ? await downloadDouyinVideo(ctx.input.douyinUrl ?? '', ctx.artifactDir, {
+            cookieHeader: douyinCookie,
+          })
+        : await downloadDouyinVideo(ctx.input.douyinUrl ?? '', ctx.artifactDir);
   await writeJson(result.metaPath, {
     source: ctx.input.sourceVideoPath ?? ctx.input.douyinUrl,
     sourceType: ctx.input.sourceVideoPath !== undefined ? 'local' : 'douyin',

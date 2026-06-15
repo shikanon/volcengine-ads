@@ -16,6 +16,7 @@ import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
 const SERVICE_NAME = 'volcengine-ads';
 const ACCOUNT_NAME = 'local-master-key';
 const ENCRYPTED_KEYS = new Set([
+  'douyinCookie',
   'seedanceApiKey',
   'imageApiKey',
   'llmApiKey',
@@ -190,6 +191,7 @@ export class SettingsService {
     const asrToken = await this.readEncrypted('asrToken');
     const ossAccessKeyId = await this.readEncrypted('ossAccessKeyId');
     const ossAccessKeySecret = await this.readEncrypted('ossAccessKeySecret');
+    const douyinCookie = await this.readEncrypted('douyinCookie');
     const settings: SettingsState = {
       seedanceConfigured: Boolean(seedanceApiKey),
       imageConfigured: Boolean(imageApiKey),
@@ -206,6 +208,7 @@ export class SettingsService {
         getJson<WorkflowPromptOverrides>(this.repository, 'workflowPrompts', {}),
       ),
     };
+    if (douyinCookie) settings.douyinCookie = douyinCookie;
     if (seedanceApiKey) settings.seedanceApiKey = seedanceApiKey;
     if (imageApiKey) settings.imageApiKey = imageApiKey;
     if (llmApiKey) settings.llmApiKey = llmApiKey;

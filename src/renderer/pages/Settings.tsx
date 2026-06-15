@@ -28,6 +28,7 @@ export function Settings() {
       if (settings.seedanceApiKey) values.seedanceApiKey = settings.seedanceApiKey;
       if (settings.imageApiKey) values.imageApiKey = settings.imageApiKey;
       if (settings.llmApiKey) values.llmApiKey = settings.llmApiKey;
+      if (settings.douyinCookie) values.douyinCookie = settings.douyinCookie;
       if (settings.ttsApiKey) values.ttsApiKey = settings.ttsApiKey;
       if (settings.ttsAppId) values.ttsAppId = settings.ttsAppId;
       if (settings.ttsToken) values.ttsToken = settings.ttsToken;
@@ -159,6 +160,16 @@ export function Settings() {
 
             <section className="settings-section">
               <Typography.Title level={5}>本地行为</Typography.Title>
+              <Form.Item
+                name="douyinCookie"
+                label="抖音 Cookie"
+                extra="可选。把 Chrome 开发者工具里请求头中的 Cookie 原文粘贴到这里；裂变任务下载抖音视频时会优先使用该配置。"
+              >
+                <Input.TextArea
+                  autoSize={{ minRows: 4, maxRows: 8 }}
+                  placeholder="示例：sessionid=...; ttwid=...; passport_csrf_token=..."
+                />
+              </Form.Item>
               <Form.Item name="concurrency" label="并发任务数">
                 <InputNumber min={1} max={2} className="number-input" />
               </Form.Item>

@@ -20,6 +20,10 @@ export interface DouyinDownloadResult {
   metaPath: string;
 }
 
+export interface DownloadDouyinVideoOptions {
+  cookieHeader?: string;
+}
+
 const YT_DLP_RELEASE_BASE_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
 const YT_DLP_COOKIE_CACHE_NAME = 'yt-dlp-chrome-cookies.txt';
 const YT_DLP_COOKIE_CACHE_FALLBACK_DIR = 'yt-dlp-cache';
@@ -107,14 +111,30 @@ export function normalizeDouyinUrlInput(input: string): string {
     normalized = normalized.slice(0, -1);
   }
 
+  try {
+    const parsed = new URL(normalized);
+    const modalId = parsed.searchParams.get('modal_id')?.trim();
+    const isDouyinHost = /(^|\.)douyin\.com$/iu.test(parsed.hostname);
+    const isSearchPage = /\/(jingxuan\/)?search\//iu.test(parsed.pathname);
+    if (isDouyinHost && isSearchPage && modalId) {
+      return `https://www.douyin.com/video/${modalId}`;
+    }
+  } catch {
+    return normalized;
+  }
+
   return normalized;
 }
 
 export function explainDouyinDownloadFailure(error: unknown): string | undefined {
   const message = error instanceof Error ? error.message : String(error);
 
-  if (/Fresh cookies .* needed|cookies-from-browser|Sign in to confirm|login required/iu.test(message)) {
-    return '抖音当前要求 fresh cookies，匿名下载被拦截。请重试公开可访问链接，或补充浏览器 cookies 能力后再试';
+  if (
+    /Fresh cookies .* needed|cookies-from-browser|Sign in to confirm|login required|cookie.*expired|session expired|登录已过期|登录失效/iu.test(
+      message,
+    )
+  ) {
+    return '抖音当前要求 fresh cookies 或浏览器登录态已过期。请先在 Chrome 中重新登录抖音，再重试下载';
   }
 
   if (/Unable to handle request|Unsupported URL|Extracting URL:\s*$|Invalid URL/iu.test(message)) {
@@ -158,6 +178,33 @@ export function buildYtDlpCookieExportArgs(cookieFilePath: string, url: string):
     cookieFilePath,
     '--skip-download',
     '--simulate',
+    '--no-playlist',
+    url,
+  ];
+}
+
+export function normalizeDouyinCookieHeader(cookieHeader: string): string {
+  return cookieHeader
+    .trim()
+    .replace(/^cookie\s*:\s*/iu, '')
+    .split(/\r?\n/iu)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('; ')
+    .replace(/;\s*;\s*/gu, '; ')
+    .trim();
+}
+
+export function buildYtDlpCookieHeaderArgs(
+  outputPath: string,
+  url: string,
+  cookieHeader: string,
+): string[] {
+  return [
+    '--add-header',
+    `Cookie: ${normalizeDouyinCookieHeader(cookieHeader)}`,
+    '-o',
+    outputPath,
     '--no-playlist',
     url,
   ];
@@ -307,7 +354,11 @@ async function exportChromeCookiesToCache(
   throw new Error(reason);
 }
 
-export async function downloadDouyinVideo(url: string, artifactDir: string): Promise<DouyinDownloadResult> {
+export async function downloadDouyinVideo(
+  url: string,
+  artifactDir: string,
+  options: DownloadDouyinVideoOptions = {},
+): Promise<DouyinDownloadResult> {
   const sourceVideoPath = join(artifactDir, 'source.mp4');
   const sourceAudioPath = join(artifactDir, 'source.m4a');
   const metaPath = join(artifactDir, 'meta.json');
@@ -317,6 +368,16 @@ export async function downloadDouyinVideo(url: string, artifactDir: string): Pro
   await mkdir(dirname(sourceVideoPath), { recursive: true });
   try {
     try {
+      const configuredCookieHeader =
+        options.cookieHeader !== undefined
+          ? normalizeDouyinCookieHeader(options.cookieHeader)
+          : undefined;
+      if (configuredCookieHeader) {
+        await execa(
+          ytDlpPath,
+          buildYtDlpCookieHeaderArgs(sourceVideoPath, normalizedUrl, configuredCookieHeader),
+        );
+      } else {
       const usableCookieFile = (await pathExists(cookieFilePath))
         ? cookieFilePath
         : await exportChromeCookiesToCache(ytDlpPath, artifactDir, normalizedUrl);
@@ -331,6 +392,7 @@ export async function downloadDouyinVideo(url: string, artifactDir: string): Pro
           ytDlpPath,
           buildYtDlpCookieFileArgs(sourceVideoPath, normalizedUrl, refreshedCookieFile),
         );
+      }
       }
     } catch (error) {
       if (!shouldRetryWithoutChromeCookies(error)) {

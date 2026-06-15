@@ -373,6 +373,7 @@ export interface SettingsState {
   llmConfigured: boolean;
   ttsConfigured: boolean;
   asrConfigured: boolean;
+  douyinCookie?: string;
   seedanceApiKey?: string;
   imageApiKey?: string;
   llmApiKey?: string;
@@ -407,6 +408,7 @@ export interface ProviderPublicSettings {
 }
 
 export interface SettingsUpdate {
+  douyinCookie?: string;
   seedanceApiKey?: string;
   imageApiKey?: string;
   llmApiKey?: string;

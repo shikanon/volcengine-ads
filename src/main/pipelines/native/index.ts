@@ -5,6 +5,7 @@ import pLimit from 'p-limit';
 
 import { AppError, toAppError } from '../../errors.js';
 import { concatSilentVideos, concatVideos, muxAudioVideo, trimVideo } from '../../media/ffmpeg.js';
+import type { SeedanceVideoRequest } from '../../model-client/index.js';
 import { DEFAULT_VIDEO_RESOLUTION, type NativeIndustry, type NativeInput } from '../../../shared/types.js';
 import { NATIVE_INDUSTRY_DEFINITIONS } from '../../../shared/workflows.js';
 import { errorTypeLabel } from '../task-log.js';
@@ -673,7 +674,202 @@ async function runVideoPromptOptimize(ctx: StepContext<NativeInput>) {
   };
 }
 
-async function runAssetGenerator(ctx: StepContext<NativeInput>) {
+interface NativeAssetReferences {
+  referenceImagePaths?: string[];
+  referenceAudioPath?: string;
+}
+
+interface NativeAssetGenerationState {
+  route: IndustryRoute;
+  storyboard: StoryboardBundle;
+  videoPrompts?: NativeVideoPrompts;
+  assetsPath: string;
+  targetDurationSec: number;
+  references: NativeAssetReferences;
+}
+
+interface NativeVariantPlan {
+  variant: StoryboardVariant;
+  videoPath: string;
+  generatedVideoPath: string;
+  voiceover: string;
+  shouldMuxVoiceover: boolean;
+  segments: StoryboardSegment[];
+}
+
+type GeneratedSegmentResult =
+  | { ok: true; segment: NativeAssetSegment }
+  | { ok: false; segment: NativeAssetSegment };
+
+class NativeAssetStateStore {
+  private readonly results: Map<number, NativeAsset>;
+  private skippedCount = 0;
+  private persistQueue = Promise.resolve();
+
+  constructor(
+    private readonly storyboard: StoryboardBundle,
+    private readonly assetsPath: string,
+    previousAssets: NativeAssets | undefined,
+  ) {
+    this.results = new Map(previousAssets?.assets.map((asset) => [asset.index, asset]) ?? []);
+  }
+
+  get skipped(): number {
+    return this.skippedCount;
+  }
+
+  getExisting(index: number): NativeAsset | undefined {
+    return this.results.get(index);
+  }
+
+  isReusable(index: number): boolean {
+    return isReusableNativeAsset(this.getExisting(index));
+  }
+
+  async markSkipped(): Promise<void> {
+    this.skippedCount += 1;
+    await this.persist();
+  }
+
+  async record(asset: NativeAsset): Promise<void> {
+    this.results.set(asset.index, asset);
+    await this.persist();
+  }
+
+  getAssets(): NativeAsset[] {
+    return this.storyboard.variants
+      .map((variant) => this.results.get(variant.index))
+      .filter((asset): asset is NativeAsset => asset !== undefined);
+  }
+
+  async finalize(): Promise<string> {
+    await this.persistQueue;
+    return writeJson(
+      this.assetsPath,
+      buildNativeAssetsReport(this.getAssets(), this.storyboard.variants.length, this.skipped),
+    );
+  }
+
+  private persist(): Promise<void> {
+    this.persistQueue = this.persistQueue.then(async () => {
+      await writeJson(
+        this.assetsPath,
+        buildNativeAssetsReport(this.getAssets(), this.storyboard.variants.length, this.skipped),
+      );
+    });
+    return this.persistQueue;
+  }
+}
+
+function sumNativeSegmentDurations(segments: NativeAssetSegment[]): number {
+  return segments.reduce((total, item) => total + item.durationSec, 0);
+}
+
+function buildVariantPlan(
+  ctx: StepContext<NativeInput>,
+  variant: StoryboardVariant,
+  targetDurationSec: number,
+): NativeVariantPlan {
+  const videoPath = artifactPath(ctx.artifactDir, `asset_variant_${variant.index}.mp4`);
+  const voiceover =
+    variant.voiceover ??
+    variant.shots
+      .map((shot) => shot.voiceoverText)
+      .filter(Boolean)
+      .join(' ');
+  const shouldMuxVoiceover = voiceover.length > 0;
+  const generatedVideoPath = shouldMuxVoiceover
+    ? artifactPath(ctx.artifactDir, `asset_variant_${variant.index}_silent.mp4`)
+    : videoPath;
+
+  return {
+    variant,
+    videoPath,
+    generatedVideoPath,
+    voiceover,
+    shouldMuxVoiceover,
+    segments: splitVariantForSeedance(variant, targetDurationSec),
+  };
+}
+
+function buildNativeAssetSnapshot(params: {
+  plan: NativeVariantPlan;
+  status: 'success' | 'failed';
+  videoPath: string;
+  segments: NativeAssetSegment[];
+  references: NativeAssetReferences;
+  error?: string;
+  audioPath?: string;
+  completedAt?: number;
+  failedAt?: number;
+}): NativeAsset {
+  return {
+    index: params.plan.variant.index,
+    title: params.plan.variant.title,
+    status: params.status,
+    videoPath: params.videoPath,
+    ...(params.audioPath !== undefined ? { audioPath: params.audioPath } : {}),
+    ...(params.error !== undefined ? { error: params.error } : {}),
+    durationSec: sumNativeSegmentDurations(params.segments),
+    segments: params.segments,
+    usedReferenceVideo: params.segments.some((item) => item.usedReferenceVideo),
+    usedReferenceImages: params.segments.some((item) => item.usedReferenceImages),
+    usedReferenceAudio: params.segments.some((item) => item.usedReferenceAudio),
+    ...(params.references.referenceImagePaths !== undefined
+      ? { referenceImagePaths: params.references.referenceImagePaths }
+      : {}),
+    ...(params.references.referenceAudioPath !== undefined
+      ? { referenceAudioPath: params.references.referenceAudioPath }
+      : {}),
+    ...(params.completedAt !== undefined ? { completedAt: params.completedAt } : {}),
+    ...(params.failedAt !== undefined ? { failedAt: params.failedAt } : {}),
+  };
+}
+
+function buildNativeSegmentSnapshot(params: {
+  segment: StoryboardSegment;
+  status: 'success' | 'failed';
+  path: string;
+  usedReferenceVideo: boolean;
+  references: NativeAssetReferences;
+  referenceVideoPath?: string;
+  error?: string;
+}): NativeAssetSegment {
+  return {
+    index: params.segment.index,
+    status: params.status,
+    path: params.path,
+    durationSec: params.segment.durationSec,
+    ...(params.error !== undefined ? { error: params.error } : {}),
+    usedReferenceVideo: params.usedReferenceVideo,
+    usedReferenceImages: params.references.referenceImagePaths !== undefined,
+    usedReferenceAudio: params.references.referenceAudioPath !== undefined,
+    ...(params.referenceVideoPath !== undefined
+      ? { referenceVideoPath: params.referenceVideoPath }
+      : {}),
+    ...(params.references.referenceImagePaths !== undefined
+      ? { referenceImagePaths: params.references.referenceImagePaths }
+      : {}),
+    ...(params.references.referenceAudioPath !== undefined
+      ? { referenceAudioPath: params.references.referenceAudioPath }
+      : {}),
+    ...(params.status === 'success' ? { completedAt: Date.now() } : { failedAt: Date.now() }),
+  };
+}
+
+function findOptimizedNativeVideoPrompt(
+  videoPrompts: NativeVideoPrompts | undefined,
+  variantIndex: number,
+  segmentIndex: number,
+): NativeVideoPromptSegment | undefined {
+  return videoPrompts?.variants
+    .find((item) => item.index === variantIndex)
+    ?.segments.find((item) => item.index === segmentIndex);
+}
+
+async function createNativeAssetGenerationState(
+  ctx: StepContext<NativeInput>,
+): Promise<NativeAssetGenerationState> {
   const route = await readJson<IndustryRoute>(artifactPath(ctx.artifactDir, 'industry.json'));
   const storyboard = await readJson<StoryboardBundle>(
     artifactPath(ctx.artifactDir, 'storyboard.json'),
@@ -682,520 +878,580 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
   const videoPrompts = existsSync(videoPromptsPath)
     ? await readJson<NativeVideoPrompts>(videoPromptsPath)
     : undefined;
-  const limit = pLimit(4);
-  const targetDurationSec = Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec));
-  const assetsPath = artifactPath(ctx.artifactDir, 'assets.json');
-  const previousAssets = await readNativeAssetsIfExists(assetsPath);
   const referenceImagePaths =
     ctx.input.referenceImagePaths !== undefined && ctx.input.referenceImagePaths.length > 0
       ? ctx.input.referenceImagePaths
       : undefined;
-  const referenceAudioPath = ctx.input.referenceAudioPath;
-  const results = new Map<number, NativeAsset>(
-    previousAssets?.assets.map((asset) => [asset.index, asset]) ?? [],
-  );
-  let skipped = 0;
 
-  await ctx.appendLog?.('info', '素材生成节点初始化', {
-    targetDurationSec,
-    variantCount: storyboard.variants.length,
-    ratio: ctx.input.ratio,
-    assetsPath,
-    hasReferenceVideo: ctx.input.referenceVideoPath !== undefined,
-    hasReferenceImages: referenceImagePaths !== undefined,
-    hasReferenceAudio: referenceAudioPath !== undefined,
+  return {
+    route,
+    storyboard,
+    ...(videoPrompts !== undefined ? { videoPrompts } : {}),
+    assetsPath: artifactPath(ctx.artifactDir, 'assets.json'),
+    targetDurationSec: Math.max(SEEDANCE_MIN_DURATION_SEC, Math.round(ctx.input.durationSec)),
+    references: {
+      ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
+      ...(ctx.input.referenceAudioPath !== undefined
+        ? { referenceAudioPath: ctx.input.referenceAudioPath }
+        : {}),
+    },
+  };
+}
+
+function createNativeSegmentRequest(params: {
+  ctx: StepContext<NativeInput>;
+  state: NativeAssetGenerationState;
+  plan: NativeVariantPlan;
+  segment: StoryboardSegment;
+  segmentPath: string;
+  referenceVideoPath?: string;
+  prompt: string;
+}): SeedanceVideoRequest {
+  return {
+    prompt: params.prompt,
+    durationSec: params.segment.durationSec,
+    resolution: params.ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
+    ratio: params.ctx.input.ratio,
+    generateAudio: true,
+    outputPath: params.segmentPath,
+    ...(params.referenceVideoPath !== undefined
+      ? { refVideoPath: params.referenceVideoPath }
+      : {}),
+    ...(params.state.references.referenceImagePaths !== undefined
+      ? { refImagePaths: params.state.references.referenceImagePaths }
+      : {}),
+    ...(params.state.references.referenceAudioPath !== undefined
+      ? { audioPath: params.state.references.referenceAudioPath }
+      : {}),
+  };
+}
+
+async function generateNativeSegment(params: {
+  ctx: StepContext<NativeInput>;
+  state: NativeAssetGenerationState;
+  plan: NativeVariantPlan;
+  segment: StoryboardSegment;
+  segmentPath: string;
+  referenceVideoPath?: string;
+}): Promise<GeneratedSegmentResult> {
+  const { ctx, state, plan, segment, segmentPath, referenceVideoPath } = params;
+  const optimizedSegment = findOptimizedNativeVideoPrompt(
+    state.videoPrompts,
+    plan.variant.index,
+    segment.index,
+  );
+  const referencePolicy = buildReferencePolicyText({
+    hasReferenceVideo: referenceVideoPath !== undefined,
+    hasReferenceImages: state.references.referenceImagePaths !== undefined,
+    hasReferenceAudio: state.references.referenceAudioPath !== undefined,
+    purpose: `${state.route.title}行业原生素材「${plan.variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
+  });
+  const noReferencePolicy = buildReferencePolicyText({
+    hasReferenceImages: state.references.referenceImagePaths !== undefined,
+    hasReferenceAudio: state.references.referenceAudioPath !== undefined,
+    purpose: `${state.route.title}行业原生素材「${plan.variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
+    noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
+  });
+  const prompt =
+    optimizedSegment?.prompt ??
+    workflowPrompt(ctx, 'native.asset_generator', {
+      industryTitle: state.route.title,
+      title: plan.variant.title,
+      script: plan.variant.script,
+      storyboard:
+        plan.segments.length > 1
+          ? storyboardSegmentPromptText(segment, plan.segments.length, referencePolicy)
+          : storyboardPromptText(plan.variant, referencePolicy),
+      ratio: ctx.input.ratio,
+      referencePolicy,
+    });
+  const videoRequest = createNativeSegmentRequest({
+    ctx,
+    state,
+    plan,
+    segment,
+    segmentPath,
+    prompt,
+    ...(referenceVideoPath !== undefined ? { referenceVideoPath } : {}),
+  });
+  let usedReferenceVideo = referenceVideoPath !== undefined;
+
+  await ctx.appendLog?.('info', '开始调用 Seedance 生成视频片段', {
+    variantIndex: plan.variant.index,
+    segmentIndex: segment.index,
+    segmentCount: plan.segments.length,
+    durationSec: segment.durationSec,
+    resolution: videoRequest.resolution,
+    generateAudio: videoRequest.generateAudio,
+    outputPath: segmentPath,
+    hasReferenceVideo: referenceVideoPath !== undefined,
+    hasReferenceImages: state.references.referenceImagePaths !== undefined,
+    hasReferenceAudio: state.references.referenceAudioPath !== undefined,
+    referenceVideoPath,
+    referenceImagePaths: state.references.referenceImagePaths,
+    referenceAudioPath: state.references.referenceAudioPath,
   });
 
-  async function persistResults(): Promise<void> {
-    const ordered = storyboard.variants
-      .map((variant) => results.get(variant.index))
-      .filter((asset): asset is NativeAsset => asset !== undefined);
-    await writeJson(
-      assetsPath,
-      buildNativeAssetsReport(ordered, storyboard.variants.length, skipped),
+  try {
+    await ctx.modelClient.generateVideo(videoRequest);
+  } catch (error) {
+    if (referenceVideoPath === undefined || !isReferenceVideoRejected(error)) {
+      return {
+        ok: false,
+        segment: await buildFailedNativeSegment({
+          ctx,
+          plan,
+          segment,
+          segmentPath,
+          references: state.references,
+          error,
+          logMessage: 'Seedance 视频片段生成失败',
+          ...(referenceVideoPath !== undefined ? { referenceVideoPath } : {}),
+        }),
+      };
+    }
+
+    usedReferenceVideo = false;
+    await ctx.appendLog?.('warn', '参考视频被 Seedance 拒绝，改为无参考视频重试', {
+      variantIndex: plan.variant.index,
+      segmentIndex: segment.index,
+      durationSec: segment.durationSec,
+      referenceVideoPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    try {
+      await ctx.modelClient.generateVideo({
+        prompt:
+          optimizedSegment?.noReferencePrompt ??
+          workflowPrompt(ctx, 'native.asset_generator', {
+            industryTitle: state.route.title,
+            title: plan.variant.title,
+            script: plan.variant.script,
+            storyboard:
+              plan.segments.length > 1
+                ? storyboardSegmentPromptText(segment, plan.segments.length, noReferencePolicy)
+                : storyboardPromptText(plan.variant, noReferencePolicy),
+            ratio: ctx.input.ratio,
+            referencePolicy: noReferencePolicy,
+          }),
+        durationSec: segment.durationSec,
+        resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
+        ratio: ctx.input.ratio,
+        generateAudio: true,
+        outputPath: videoRequest.outputPath,
+        ...(state.references.referenceImagePaths !== undefined
+          ? { refImagePaths: state.references.referenceImagePaths }
+          : {}),
+        ...(state.references.referenceAudioPath !== undefined
+          ? { audioPath: state.references.referenceAudioPath }
+          : {}),
+      });
+    } catch (fallbackError) {
+      const failedSegment = await buildFailedNativeSegment({
+        ctx,
+        plan,
+        segment,
+        segmentPath,
+        references: state.references,
+        error: fallbackError,
+        logMessage: 'Seedance 无参考视频重试失败',
+        ...(referenceVideoPath !== undefined ? { referenceVideoPath } : {}),
+      });
+      return {
+        ok: false,
+        segment: {
+          ...failedSegment,
+          error: `参考视频被拒后无参考重试仍失败：${failedSegment.error ?? '未知错误'}`,
+          usedReferenceVideo,
+        },
+      };
+    }
+  }
+
+  const generatedSegment = buildNativeSegmentSnapshot({
+    segment,
+    status: 'success',
+    path: segmentPath,
+    usedReferenceVideo,
+    references: state.references,
+    ...(referenceVideoPath !== undefined ? { referenceVideoPath } : {}),
+  });
+  await ctx.appendLog?.('info', 'Seedance 视频片段生成成功', {
+    variantIndex: plan.variant.index,
+    segmentIndex: segment.index,
+    segmentCount: plan.segments.length,
+    durationSec: segment.durationSec,
+    outputPath: segmentPath,
+    usedReferenceVideo,
+  });
+  return { ok: true, segment: generatedSegment };
+}
+
+async function buildFailedNativeSegment(params: {
+  ctx: StepContext<NativeInput>;
+  plan: NativeVariantPlan;
+  segment: StoryboardSegment;
+  segmentPath: string;
+  references: NativeAssetReferences;
+  error: unknown;
+  logMessage: string;
+  referenceVideoPath?: string;
+}): Promise<NativeAssetSegment> {
+  const appError = toAppError(params.error, 'E_MODEL_API_FAILED');
+  await params.ctx.appendLog?.('error', params.logMessage, {
+    variantIndex: params.plan.variant.index,
+    title: params.plan.variant.title,
+    segmentIndex: params.segment.index,
+    segmentCount: params.plan.segments.length,
+    durationSec: params.segment.durationSec,
+    outputPath: params.segmentPath,
+    code: appError.code,
+    errorType: errorTypeLabel(appError.code),
+    detail: appError.detail ?? appError.message,
+    message: appError.message,
+  });
+  return buildNativeSegmentSnapshot({
+    segment: params.segment,
+    status: 'failed',
+    path: params.segmentPath,
+    usedReferenceVideo: params.referenceVideoPath !== undefined,
+    references: params.references,
+    error: appError.message,
+    ...(params.referenceVideoPath !== undefined
+      ? { referenceVideoPath: params.referenceVideoPath }
+      : {}),
+  });
+}
+
+async function generateNativeVariantSegments(params: {
+  ctx: StepContext<NativeInput>;
+  state: NativeAssetGenerationState;
+  store: NativeAssetStateStore;
+  plan: NativeVariantPlan;
+  existing: NativeAsset | undefined;
+  initialReferenceVideoPath?: string;
+}): Promise<NativeAssetSegment[] | undefined> {
+  const { ctx, state, store, plan, existing, initialReferenceVideoPath } = params;
+  const previousSegments = new Map<number, NativeAssetSegment>(
+    existing?.segments?.map((segment) => [segment.index, segment]) ?? [],
+  );
+  const generatedSegments: NativeAssetSegment[] = [];
+  let nextReferencePath = initialReferenceVideoPath;
+
+  for (const segment of plan.segments) {
+    const previousSegment = previousSegments.get(segment.index);
+    if (isReusableNativeSegment(previousSegment)) {
+      await ctx.appendLog?.('info', '复用已成功的视频片段', {
+        variantIndex: plan.variant.index,
+        segmentIndex: segment.index,
+        durationSec: previousSegment.durationSec,
+        path: previousSegment.path,
+      });
+      generatedSegments.push(previousSegment);
+      nextReferencePath = previousSegment.path;
+      continue;
+    }
+
+    const segmentPath =
+      plan.segments.length > 1
+        ? artifactPath(ctx.artifactDir, `asset_variant_${plan.variant.index}_part_${segment.index}.mp4`)
+        : plan.generatedVideoPath;
+    const result = await generateNativeSegment({
+      ctx,
+      state,
+      plan,
+      segment,
+      segmentPath,
+      ...(nextReferencePath !== undefined ? { referenceVideoPath: nextReferencePath } : {}),
+    });
+    generatedSegments.push(result.segment);
+
+    if (!result.ok) {
+      await store.record(
+        buildNativeAssetSnapshot({
+          plan,
+          status: 'failed',
+          videoPath: plan.generatedVideoPath,
+          error: `第 ${result.segment.index}/${plan.segments.length} 段生成失败：${result.segment.error ?? '未知错误'}`,
+          segments: generatedSegments,
+          references: state.references,
+          failedAt: Date.now(),
+        }),
+      );
+      return undefined;
+    }
+
+    nextReferencePath = segmentPath;
+    await store.record(
+      buildNativeAssetSnapshot({
+        plan,
+        status: 'failed',
+        videoPath: plan.generatedVideoPath,
+        error: `第 ${segment.index}/${plan.segments.length} 段已生成，等待剩余片段`,
+        segments: generatedSegments,
+        references: state.references,
+        failedAt: Date.now(),
+      }),
     );
   }
+
+  return generatedSegments;
+}
+
+async function composeNativeVariantAsset(params: {
+  ctx: StepContext<NativeInput>;
+  state: NativeAssetGenerationState;
+  plan: NativeVariantPlan;
+  generatedSegments: NativeAssetSegment[];
+}): Promise<NativeAsset> {
+  const { ctx, state, plan, generatedSegments } = params;
+  try {
+    if (generatedSegments.length > 1 && !existsSync(plan.generatedVideoPath)) {
+      await ctx.appendLog?.('info', '开始拼接 Seedance 视频片段', {
+        variantIndex: plan.variant.index,
+        segmentPaths: generatedSegments.map((segment) => segment.path),
+        outputPath: plan.generatedVideoPath,
+        audioMode: plan.shouldMuxVoiceover ? 'drop_segment_audio_for_tts' : 'keep_seedance_audio',
+      });
+      if (plan.shouldMuxVoiceover) {
+        await concatSilentVideos(
+          generatedSegments.map((segment) => segment.path),
+          plan.generatedVideoPath,
+        );
+      } else {
+        await concatVideos(
+          generatedSegments.map((segment) => segment.path),
+          plan.generatedVideoPath,
+        );
+      }
+      await ctx.appendLog?.('info', 'Seedance 视频片段拼接成功', {
+        variantIndex: plan.variant.index,
+        outputPath: plan.generatedVideoPath,
+      });
+    }
+  } catch (error) {
+    const appError = toAppError(error, 'E_FFMPEG_FAILED');
+    await ctx.appendLog?.('error', 'Seedance 视频片段拼接失败', {
+      variantIndex: plan.variant.index,
+      segmentPaths: generatedSegments.map((segment) => segment.path),
+      outputPath: plan.generatedVideoPath,
+      code: appError.code,
+      errorType: errorTypeLabel(appError.code),
+      detail: appError.detail ?? appError.message,
+      message: appError.message,
+    });
+    return buildNativeAssetSnapshot({
+      plan,
+      status: 'failed',
+      videoPath: plan.generatedVideoPath,
+      error: `片段拼接失败：${appError.message}`,
+      segments: generatedSegments,
+      references: state.references,
+      failedAt: Date.now(),
+    });
+  }
+
+  if (!plan.shouldMuxVoiceover) {
+    await ctx.appendLog?.('info', '素材无口播文本，使用 Seedance 自带音频输出', {
+      variantIndex: plan.variant.index,
+      videoPath: plan.videoPath,
+    });
+    return buildNativeAssetSnapshot({
+      plan,
+      status: 'success',
+      videoPath: plan.videoPath,
+      segments: generatedSegments,
+      references: state.references,
+      completedAt: Date.now(),
+    });
+  }
+
+  return muxNativeVariantVoiceover({ ctx, state, plan, generatedSegments });
+}
+
+async function muxNativeVariantVoiceover(params: {
+  ctx: StepContext<NativeInput>;
+  state: NativeAssetGenerationState;
+  plan: NativeVariantPlan;
+  generatedSegments: NativeAssetSegment[];
+}): Promise<NativeAsset> {
+  const { ctx, state, plan, generatedSegments } = params;
+  const reusableSingleSegmentPath =
+    generatedSegments.length === 1 ? generatedSegments[0]?.path : undefined;
+  if (
+    reusableSingleSegmentPath !== undefined &&
+    reusableSingleSegmentPath !== plan.generatedVideoPath &&
+    existsSync(reusableSingleSegmentPath) &&
+    !existsSync(plan.generatedVideoPath)
+  ) {
+    await ctx.appendLog?.('info', '复制已复用视频片段为口播合成工作文件', {
+      variantIndex: plan.variant.index,
+      sourcePath: reusableSingleSegmentPath,
+      generatedVideoPath: plan.generatedVideoPath,
+    });
+    await copyFile(reusableSingleSegmentPath, plan.generatedVideoPath);
+  }
+
+  try {
+    await ctx.appendLog?.('info', '开始生成素材口播音频', {
+      variantIndex: plan.variant.index,
+      textLength: plan.voiceover.length,
+    });
+    const audio = await ctx.modelClient.tts(plan.voiceover);
+    await ctx.appendLog?.('info', '素材口播音频生成成功', {
+      variantIndex: plan.variant.index,
+      audioPath: audio.localPath,
+    });
+    try {
+      await ctx.appendLog?.('info', '开始合成素材视频和口播音频', {
+        variantIndex: plan.variant.index,
+        videoPath: plan.generatedVideoPath,
+        audioPath: audio.localPath,
+        outputPath: plan.videoPath,
+      });
+      await muxAudioVideo(plan.generatedVideoPath, audio.localPath, plan.videoPath);
+      await ctx.appendLog?.('info', '素材视频和口播音频合成成功', {
+        variantIndex: plan.variant.index,
+        outputPath: plan.videoPath,
+      });
+    } catch (error) {
+      const appError = toAppError(error, 'E_FFMPEG_FAILED');
+      await ctx.appendLog?.('error', '素材视频和口播音频合成失败', {
+        variantIndex: plan.variant.index,
+        videoPath: plan.generatedVideoPath,
+        audioPath: audio.localPath,
+        outputPath: plan.videoPath,
+        code: appError.code,
+        errorType: errorTypeLabel(appError.code),
+        detail: appError.detail ?? appError.message,
+        message: appError.message,
+      });
+      return buildNativeAssetSnapshot({
+        plan,
+        status: 'failed',
+        videoPath: plan.generatedVideoPath,
+        audioPath: audio.localPath,
+        error: `素材视频和口播音频合成失败：${appError.message}`,
+        segments: generatedSegments,
+        references: state.references,
+        failedAt: Date.now(),
+      });
+    }
+    return buildNativeAssetSnapshot({
+      plan,
+      status: 'success',
+      videoPath: plan.videoPath,
+      audioPath: audio.localPath,
+      segments: generatedSegments,
+      references: state.references,
+      completedAt: Date.now(),
+    });
+  } catch (error) {
+    const appError = toAppError(error, 'E_MODEL_API_FAILED');
+    await ctx.appendLog?.('error', '素材口播音频生成失败', {
+      variantIndex: plan.variant.index,
+      code: appError.code,
+      errorType: errorTypeLabel(appError.code),
+      detail: appError.detail ?? appError.message,
+      message: appError.message,
+    });
+    return buildNativeAssetSnapshot({
+      plan,
+      status: 'failed',
+      videoPath: plan.generatedVideoPath,
+      error: appError.message,
+      segments: generatedSegments,
+      references: state.references,
+      failedAt: Date.now(),
+    });
+  }
+}
+
+async function runNativeVariantAssetGeneration(params: {
+  ctx: StepContext<NativeInput>;
+  state: NativeAssetGenerationState;
+  store: NativeAssetStateStore;
+  variant: StoryboardVariant;
+  referenceVideoPath?: string;
+}): Promise<void> {
+  const { ctx, state, store, variant, referenceVideoPath } = params;
+  const existing = store.getExisting(variant.index);
+  if (store.isReusable(variant.index)) {
+    await store.markSkipped();
+    return;
+  }
+
+  const plan = buildVariantPlan(ctx, variant, state.targetDurationSec);
+  await ctx.appendLog?.('info', '素材变体分段计划', {
+    variantIndex: variant.index,
+    title: variant.title,
+    targetDurationSec: state.targetDurationSec,
+    segmentDurations: plan.segments.map((segment) => segment.durationSec),
+    finalVideoPath: plan.videoPath,
+    generatedVideoPath: plan.generatedVideoPath,
+    audioMode: plan.shouldMuxVoiceover ? 'tts_mux' : 'seedance_generate_audio',
+  });
+
+  const generatedSegments = await generateNativeVariantSegments({
+    ctx,
+    state,
+    store,
+    plan,
+    existing,
+    ...(referenceVideoPath !== undefined ? { initialReferenceVideoPath: referenceVideoPath } : {}),
+  });
+  if (generatedSegments === undefined) {
+    return;
+  }
+
+  const asset = await composeNativeVariantAsset({ ctx, state, plan, generatedSegments });
+  await store.record(asset);
+}
+
+async function runAssetGenerator(ctx: StepContext<NativeInput>) {
+  const state = await createNativeAssetGenerationState(ctx);
+  const previousAssets = await readNativeAssetsIfExists(state.assetsPath);
+  const store = new NativeAssetStateStore(state.storyboard, state.assetsPath, previousAssets);
+  const limit = pLimit(4);
+
+  await ctx.appendLog?.('info', '素材生成节点初始化', {
+    targetDurationSec: state.targetDurationSec,
+    variantCount: state.storyboard.variants.length,
+    ratio: ctx.input.ratio,
+    assetsPath: state.assetsPath,
+    hasReferenceVideo: ctx.input.referenceVideoPath !== undefined,
+    hasReferenceImages: state.references.referenceImagePaths !== undefined,
+    hasReferenceAudio: state.references.referenceAudioPath !== undefined,
+  });
 
   const referenceVideoPath =
     ctx.input.referenceVideoPath !== undefined
       ? await trimVideo(
           ctx.input.referenceVideoPath,
           artifactPath(ctx.artifactDir, 'seedance_reference.mp4'),
-          Math.min(targetDurationSec, 4),
+          Math.min(state.targetDurationSec, 4),
           seedanceReferenceFilter(ctx.input.ratio),
         )
       : undefined;
+
   await Promise.all(
-    storyboard.variants.map((variant) =>
-      limit(async (): Promise<void> => {
-        const existing = results.get(variant.index);
-        if (isReusableNativeAsset(existing)) {
-          skipped += 1;
-          await persistResults();
-          return;
-        }
-
-        const videoPath = artifactPath(ctx.artifactDir, `asset_variant_${variant.index}.mp4`);
-        const voiceover =
-          variant.voiceover ??
-          variant.shots
-            .map((shot) => shot.voiceoverText)
-            .filter(Boolean)
-            .join(' ');
-        const shouldMuxVoiceover = voiceover.length > 0;
-        const generatedVideoPath = shouldMuxVoiceover
-          ? artifactPath(ctx.artifactDir, `asset_variant_${variant.index}_silent.mp4`)
-          : videoPath;
-        const segments = splitVariantForSeedance(variant, targetDurationSec);
-        await ctx.appendLog?.('info', '素材变体分段计划', {
-          variantIndex: variant.index,
-          title: variant.title,
-          targetDurationSec,
-          segmentDurations: segments.map((segment) => segment.durationSec),
-          finalVideoPath: videoPath,
-          generatedVideoPath,
-          audioMode: shouldMuxVoiceover ? 'tts_mux' : 'seedance_generate_audio',
-        });
-        const previousSegments = new Map<number, NativeAssetSegment>(
-          existing?.segments?.map((segment) => [segment.index, segment]) ?? [],
-        );
-        const generatedSegments: NativeAssetSegment[] = [];
-        let nextReferencePath = referenceVideoPath;
-        let segmentFailure: NativeAssetSegment | undefined;
-
-        for (const segment of segments) {
-          const previousSegment = previousSegments.get(segment.index);
-          if (isReusableNativeSegment(previousSegment)) {
-            await ctx.appendLog?.('info', '复用已成功的视频片段', {
-              variantIndex: variant.index,
-              segmentIndex: segment.index,
-              durationSec: previousSegment.durationSec,
-              path: previousSegment.path,
-            });
-            generatedSegments.push(previousSegment);
-            nextReferencePath = previousSegment.path;
-            continue;
-          }
-
-          const segmentPath =
-            segments.length > 1
-              ? artifactPath(
-                  ctx.artifactDir,
-                  `asset_variant_${variant.index}_part_${segment.index}.mp4`,
-                )
-              : generatedVideoPath;
-          const referencePolicy = buildReferencePolicyText({
-            hasReferenceVideo: nextReferencePath !== undefined,
-            hasReferenceImages: referenceImagePaths !== undefined,
-            hasReferenceAudio: referenceAudioPath !== undefined,
-            purpose: `${route.title}行业原生素材「${variant.title}」生成：保持行业公式、首秒钩子和转化目标。`,
-          });
-          const noReferencePolicy = buildReferencePolicyText({
-            hasReferenceImages: referenceImagePaths !== undefined,
-            hasReferenceAudio: referenceAudioPath !== undefined,
-            purpose: `${route.title}行业原生素材「${variant.title}」无参考视频生成：基于脚本和分镜完成画面。`,
-            noReferenceFallback: '当前参考视频不可用或被模型拒绝，只基于脚本、分镜和行业公式生成，不要声称参考了视频。',
-          });
-          const optimizedSegment = videoPrompts?.variants
-            .find((item) => item.index === variant.index)
-            ?.segments.find((item) => item.index === segment.index);
-          const videoRequest = {
-            prompt:
-              optimizedSegment?.prompt ??
-              workflowPrompt(ctx, 'native.asset_generator', {
-                industryTitle: route.title,
-                title: variant.title,
-                script: variant.script,
-                storyboard:
-                  segments.length > 1
-                    ? storyboardSegmentPromptText(segment, segments.length, referencePolicy)
-                    : storyboardPromptText(variant, referencePolicy),
-                ratio: ctx.input.ratio,
-                referencePolicy,
-              }),
-            durationSec: segment.durationSec,
-            resolution: ctx.input.resolution ?? DEFAULT_VIDEO_RESOLUTION,
-            ratio: ctx.input.ratio,
-            generateAudio: true,
-            outputPath: segmentPath,
-            ...(nextReferencePath !== undefined ? { refVideoPath: nextReferencePath } : {}),
-            ...(referenceImagePaths !== undefined ? { refImagePaths: referenceImagePaths } : {}),
-            ...(referenceAudioPath !== undefined ? { audioPath: referenceAudioPath } : {}),
-          };
-          let usedReferenceVideo = nextReferencePath !== undefined;
-          const usedReferenceImages = referenceImagePaths !== undefined;
-          const usedReferenceAudio = referenceAudioPath !== undefined;
-          await ctx.appendLog?.('info', '开始调用 Seedance 生成视频片段', {
-            variantIndex: variant.index,
-            segmentIndex: segment.index,
-            segmentCount: segments.length,
-            durationSec: segment.durationSec,
-            resolution: videoRequest.resolution,
-            generateAudio: videoRequest.generateAudio,
-            outputPath: segmentPath,
-            hasReferenceVideo: nextReferencePath !== undefined,
-            hasReferenceImages: referenceImagePaths !== undefined,
-            hasReferenceAudio: referenceAudioPath !== undefined,
-            referenceVideoPath: nextReferencePath,
-            referenceImagePaths,
-            referenceAudioPath,
-          });
-          try {
-            await ctx.modelClient.generateVideo(videoRequest);
-          } catch (error) {
-            if (nextReferencePath === undefined || !isReferenceVideoRejected(error)) {
-              const appError = toAppError(error, 'E_MODEL_API_FAILED');
-              await ctx.appendLog?.('error', 'Seedance 视频片段生成失败', {
-                variantIndex: variant.index,
-                title: variant.title,
-                segmentIndex: segment.index,
-                segmentCount: segments.length,
-                durationSec: segment.durationSec,
-                outputPath: segmentPath,
-                code: appError.code,
-                errorType: errorTypeLabel(appError.code),
-                detail: appError.detail ?? appError.message,
-                message: appError.message,
-              });
-              segmentFailure = {
-                index: segment.index,
-                status: 'failed',
-                path: segmentPath,
-                durationSec: segment.durationSec,
-                error: appError.message,
-                usedReferenceVideo,
-                usedReferenceImages,
-                usedReferenceAudio,
-                ...(nextReferencePath !== undefined
-                  ? { referenceVideoPath: nextReferencePath }
-                  : {}),
-                ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-                ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-                failedAt: Date.now(),
-              };
-              generatedSegments.push(segmentFailure);
-              break;
-            }
-            usedReferenceVideo = false;
-            await ctx.appendLog?.('warn', '参考视频被 Seedance 拒绝，改为无参考视频重试', {
-              variantIndex: variant.index,
-              segmentIndex: segment.index,
-              durationSec: segment.durationSec,
-              referenceVideoPath: nextReferencePath,
-              error: error instanceof Error ? error.message : String(error),
-            });
-            try {
-              await ctx.modelClient.generateVideo({
-                prompt:
-                  optimizedSegment?.noReferencePrompt ??
-                  workflowPrompt(ctx, 'native.asset_generator', {
-                    industryTitle: route.title,
-                    title: variant.title,
-                    script: variant.script,
-                    storyboard:
-                      segments.length > 1
-                        ? storyboardSegmentPromptText(segment, segments.length, noReferencePolicy)
-                        : storyboardPromptText(variant, noReferencePolicy),
-                    ratio: ctx.input.ratio,
-                    referencePolicy: noReferencePolicy,
-                  }),
-                durationSec: videoRequest.durationSec,
-                resolution: videoRequest.resolution,
-                ratio: videoRequest.ratio,
-                generateAudio: true,
-                outputPath: videoRequest.outputPath,
-                ...(referenceImagePaths !== undefined ? { refImagePaths: referenceImagePaths } : {}),
-                ...(referenceAudioPath !== undefined ? { audioPath: referenceAudioPath } : {}),
-              });
-            } catch (fallbackError) {
-              const appError = toAppError(fallbackError, 'E_MODEL_API_FAILED');
-              await ctx.appendLog?.('error', 'Seedance 无参考视频重试失败', {
-                variantIndex: variant.index,
-                title: variant.title,
-                segmentIndex: segment.index,
-                segmentCount: segments.length,
-                durationSec: segment.durationSec,
-                outputPath: segmentPath,
-                code: appError.code,
-                errorType: errorTypeLabel(appError.code),
-                detail: appError.detail ?? appError.message,
-                message: appError.message,
-              });
-              segmentFailure = {
-                index: segment.index,
-                status: 'failed',
-                path: segmentPath,
-                durationSec: segment.durationSec,
-                error: `参考视频被拒后无参考重试仍失败：${appError.message}`,
-                usedReferenceVideo,
-                usedReferenceImages,
-                usedReferenceAudio,
-                ...(nextReferencePath !== undefined
-                  ? { referenceVideoPath: nextReferencePath }
-                  : {}),
-                ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-                ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-                failedAt: Date.now(),
-              };
-              generatedSegments.push(segmentFailure);
-              break;
-            }
-          }
-
-          const generatedSegment: NativeAssetSegment = {
-            index: segment.index,
-            status: 'success',
-            path: segmentPath,
-            durationSec: segment.durationSec,
-            usedReferenceVideo,
-            usedReferenceImages,
-            usedReferenceAudio,
-            ...(nextReferencePath !== undefined ? { referenceVideoPath: nextReferencePath } : {}),
-            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-            completedAt: Date.now(),
-          };
-          await ctx.appendLog?.('info', 'Seedance 视频片段生成成功', {
-            variantIndex: variant.index,
-            segmentIndex: segment.index,
-            segmentCount: segments.length,
-            durationSec: segment.durationSec,
-            outputPath: segmentPath,
-            usedReferenceVideo,
-          });
-          generatedSegments.push(generatedSegment);
-          nextReferencePath = segmentPath;
-          results.set(variant.index, {
-            index: variant.index,
-            title: variant.title,
-            status: 'failed',
-            videoPath: generatedVideoPath,
-            error: `第 ${segment.index}/${segments.length} 段已生成，等待剩余片段`,
-            durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
-            segments: generatedSegments,
-            usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
-            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
-            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
-            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-            failedAt: Date.now(),
-          });
-          await persistResults();
-        }
-
-        if (segmentFailure !== undefined) {
-          results.set(variant.index, {
-            index: variant.index,
-            title: variant.title,
-            status: 'failed',
-            videoPath: generatedVideoPath,
-            error: `第 ${segmentFailure.index}/${segments.length} 段生成失败：${segmentFailure.error ?? '未知错误'}`,
-            durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
-            segments: generatedSegments,
-            usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
-            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
-            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
-            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-            failedAt: Date.now(),
-          });
-          await persistResults();
-          return;
-        }
-
-        try {
-          if (generatedSegments.length > 1 && !existsSync(generatedVideoPath)) {
-            await ctx.appendLog?.('info', '开始拼接 Seedance 视频片段', {
-              variantIndex: variant.index,
-              segmentPaths: generatedSegments.map((segment) => segment.path),
-              outputPath: generatedVideoPath,
-              audioMode: shouldMuxVoiceover ? 'drop_segment_audio_for_tts' : 'keep_seedance_audio',
-            });
-            if (shouldMuxVoiceover) {
-              await concatSilentVideos(
-                generatedSegments.map((segment) => segment.path),
-                generatedVideoPath,
-              );
-            } else {
-              await concatVideos(
-                generatedSegments.map((segment) => segment.path),
-                generatedVideoPath,
-              );
-            }
-            await ctx.appendLog?.('info', 'Seedance 视频片段拼接成功', {
-              variantIndex: variant.index,
-              outputPath: generatedVideoPath,
-            });
-          }
-        } catch (error) {
-          const appError = toAppError(error, 'E_FFMPEG_FAILED');
-          await ctx.appendLog?.('error', 'Seedance 视频片段拼接失败', {
-            variantIndex: variant.index,
-            segmentPaths: generatedSegments.map((segment) => segment.path),
-            outputPath: generatedVideoPath,
-            code: appError.code,
-            errorType: errorTypeLabel(appError.code),
-            detail: appError.detail ?? appError.message,
-            message: appError.message,
-          });
-          results.set(variant.index, {
-            index: variant.index,
-            title: variant.title,
-            status: 'failed',
-            videoPath: generatedVideoPath,
-            error: `片段拼接失败：${appError.message}`,
-            durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
-            segments: generatedSegments,
-            usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
-            failedAt: Date.now(),
-          });
-          await persistResults();
-          return;
-        }
-
-        if (!shouldMuxVoiceover) {
-          await ctx.appendLog?.('info', '素材无口播文本，使用 Seedance 自带音频输出', {
-            variantIndex: variant.index,
-            videoPath,
-          });
-          results.set(variant.index, {
-            index: variant.index,
-            title: variant.title,
-            status: 'success',
-            videoPath,
-            durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
-            segments: generatedSegments,
-            usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
-            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
-            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
-            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-            completedAt: Date.now(),
-          });
-          await persistResults();
-          return;
-        }
-        const reusableSingleSegmentPath =
-          generatedSegments.length === 1 ? generatedSegments[0]?.path : undefined;
-        if (
-          reusableSingleSegmentPath !== undefined &&
-          reusableSingleSegmentPath !== generatedVideoPath &&
-          existsSync(reusableSingleSegmentPath) &&
-          !existsSync(generatedVideoPath)
-        ) {
-          await ctx.appendLog?.('info', '复制已复用视频片段为口播合成工作文件', {
-            variantIndex: variant.index,
-            sourcePath: reusableSingleSegmentPath,
-            generatedVideoPath,
-          });
-          await copyFile(reusableSingleSegmentPath, generatedVideoPath);
-        }
-        try {
-          await ctx.appendLog?.('info', '开始生成素材口播音频', {
-            variantIndex: variant.index,
-            textLength: voiceover.length,
-          });
-          const audio = await ctx.modelClient.tts(voiceover);
-          await ctx.appendLog?.('info', '素材口播音频生成成功', {
-            variantIndex: variant.index,
-            audioPath: audio.localPath,
-          });
-          try {
-            await ctx.appendLog?.('info', '开始合成素材视频和口播音频', {
-              variantIndex: variant.index,
-              videoPath: generatedVideoPath,
-              audioPath: audio.localPath,
-              outputPath: videoPath,
-            });
-            await muxAudioVideo(generatedVideoPath, audio.localPath, videoPath);
-            await ctx.appendLog?.('info', '素材视频和口播音频合成成功', {
-              variantIndex: variant.index,
-              outputPath: videoPath,
-            });
-          } catch (error) {
-            const appError = toAppError(error, 'E_FFMPEG_FAILED');
-            await ctx.appendLog?.('error', '素材视频和口播音频合成失败', {
-              variantIndex: variant.index,
-              videoPath: generatedVideoPath,
-              audioPath: audio.localPath,
-              outputPath: videoPath,
-              code: appError.code,
-              errorType: errorTypeLabel(appError.code),
-              detail: appError.detail ?? appError.message,
-              message: appError.message,
-            });
-            results.set(variant.index, {
-              index: variant.index,
-              title: variant.title,
-              status: 'failed',
-              videoPath: generatedVideoPath,
-              audioPath: audio.localPath,
-              error: `素材视频和口播音频合成失败：${appError.message}`,
-              durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
-              segments: generatedSegments,
-              usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
-              usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
-              usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
-              ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-              ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-              failedAt: Date.now(),
-            });
-            await persistResults();
-            return;
-          }
-          results.set(variant.index, {
-            index: variant.index,
-            title: variant.title,
-            status: 'success',
-            videoPath,
-            audioPath: audio.localPath,
-            durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
-            segments: generatedSegments,
-            usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
-            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
-            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
-            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-            completedAt: Date.now(),
-          });
-          await persistResults();
-        } catch (error) {
-          const appError = toAppError(error, 'E_MODEL_API_FAILED');
-          await ctx.appendLog?.('error', '素材口播音频生成失败', {
-            variantIndex: variant.index,
-            code: appError.code,
-            errorType: errorTypeLabel(appError.code),
-            detail: appError.detail ?? appError.message,
-            message: appError.message,
-          });
-          results.set(variant.index, {
-            index: variant.index,
-            title: variant.title,
-            status: 'failed',
-            videoPath: generatedVideoPath,
-            error: appError.message,
-            durationSec: generatedSegments.reduce((total, item) => total + item.durationSec, 0),
-            segments: generatedSegments,
-            usedReferenceVideo: generatedSegments.some((item) => item.usedReferenceVideo),
-            usedReferenceImages: generatedSegments.some((item) => item.usedReferenceImages),
-            usedReferenceAudio: generatedSegments.some((item) => item.usedReferenceAudio),
-            ...(referenceImagePaths !== undefined ? { referenceImagePaths } : {}),
-            ...(referenceAudioPath !== undefined ? { referenceAudioPath } : {}),
-            failedAt: Date.now(),
-          });
-          await persistResults();
-        }
-      }),
+    state.storyboard.variants.map((variant) =>
+      limit(() =>
+        runNativeVariantAssetGeneration({
+          ctx,
+          state,
+          store,
+          variant,
+          ...(referenceVideoPath !== undefined ? { referenceVideoPath } : {}),
+        }),
+      ),
     ),
   );
-  const assets = storyboard.variants
-    .map((variant) => results.get(variant.index))
-    .filter((asset): asset is NativeAsset => asset !== undefined);
+
+  const assets = store.getAssets();
   const failedAssets = assets.filter((asset) => asset.status === 'failed');
-  const artifact = await writeJson(
-    assetsPath,
-    buildNativeAssetsReport(assets, storyboard.variants.length, skipped),
-  );
+  const artifact = await store.finalize();
   if (failedAssets.length > 0) {
     const summary = failedAssets
       .map((asset) => `${asset.index}「${asset.title}」：${asset.error ?? '未知错误'}`)
@@ -1214,7 +1470,7 @@ async function runAssetGenerator(ctx: StepContext<NativeInput>) {
           path: segment.path,
         })),
       })),
-      assetsPath,
+      assetsPath: state.assetsPath,
     });
     throw new AppError(
       'E_MODEL_API_FAILED',
