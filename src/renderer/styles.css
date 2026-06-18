@@ -709,6 +709,76 @@ body,
   font-size: var(--type-caption);
 }
 
+.fission-config-panel {
+  display: grid;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+  padding: var(--space-lg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in oklch, var(--accent) 14%, transparent), transparent 32%),
+    color-mix(in oklch, var(--surface-raised) 78%, transparent);
+}
+
+.fission-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.fission-mode-grid .ant-radio-wrapper {
+  margin-inline-end: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-panel) 72%, transparent);
+}
+
+.fission-mode-grid .ant-radio-wrapper-checked {
+  border-color: color-mix(in oklch, var(--accent) 52%, var(--line-soft));
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface-panel));
+}
+
+.fission-mode-option {
+  display: grid;
+  gap: var(--space-2xs);
+  margin-left: var(--space-xs);
+}
+
+.fission-mode-option strong {
+  color: var(--text-main);
+  font-size: var(--type-meta);
+  line-height: 1.35;
+}
+
+.fission-mode-option span,
+.fission-estimate-body span {
+  color: var(--text-muted);
+  font-size: var(--type-caption);
+  line-height: 1.45;
+}
+
+.fission-estimate {
+  border-color: color-mix(in oklch, var(--accent) 28%, var(--line-soft)) !important;
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface-panel)) !important;
+}
+
+.fission-estimate-body {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.fission-estimate-body strong {
+  color: var(--text-strong);
+}
+
+.fission-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
 .lark-download-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
@@ -2426,6 +2496,8 @@ body,
   .home-workspace,
   .settings-grid,
   .native-form-grid,
+  .fission-mode-grid,
+  .fission-slot-grid,
   .lark-download-layout,
   .workflow-studio {
     grid-template-columns: 1fr;

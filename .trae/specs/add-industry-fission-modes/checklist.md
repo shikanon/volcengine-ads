@@ -1,0 +1,13 @@
+- [x] 现有未选择行业裂变配置的 `explosion` 任务行为保持不变。
+- [x] `ExplosionInput` 支持可选电商/短剧 `fissionConfig`，并通过类型检查。
+- [x] 电商裂变模式覆盖痛点前贴裂变、利益点裂变、实拍数字人裂变和顺序混剪裂变。
+- [x] 短剧裂变模式覆盖顺势二创、前贴二创、解说二创和卡点混剪。
+- [x] UI 能展示槽位素材数量和组合估算公式。
+- [x] 组合估算大于 `variantCount` 时只抽样生成 `variantCount` 条。
+- [x] 必填槽位缺失时返回明确中文错误。
+- [x] Pipeline 能把槽位计划写入可追踪 artifact。
+- [x] 最终视频拼接通过 `src/main/media/ffmpeg.ts` 的媒体 API 完成。
+- [x] BGM 拼接或混合处理不会破坏需要保留的口播音频。
+- [x] 最终视频登记到素材库，并记录组合来源。
+- [x] 已补充组合估算、pipeline 和 FFmpeg 媒体处理测试。
+- [x] `npm run typecheck && npm run lint && npm test && npm run build` 通过。

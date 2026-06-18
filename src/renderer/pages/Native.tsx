@@ -124,7 +124,7 @@ export function Native() {
       <div className="form-shell wide">
         <div className="form-header">
           <div>
-            <Typography.Title level={4}>创建原生爆款素材</Typography.Title>
+            <Typography.Title level={4}>创建原生素材</Typography.Title>
             <span>按行业公式生成概念、脚本、分镜和成片素材</span>
           </div>
           <div className="native-strategy">
@@ -249,7 +249,7 @@ export function Native() {
             icon={<RocketOutlined />}
             className="primary-action"
           >
-            创建原生爆款任务
+            创建原生任务
           </Button>
         </Form>
       </div>

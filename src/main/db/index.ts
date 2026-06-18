@@ -304,13 +304,24 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   updateStepFailed(taskId: string, step: string, error: string): void {
-    this.db
-      .prepare(
-        `UPDATE task_steps
-         SET status = 'failed', logs = ?, finished_at = ?
-         WHERE task_id = ? AND step = ?`,
-      )
-      .run(error, Date.now(), taskId, step);
+    const now = Date.now();
+    const transaction = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE task_steps
+           SET status = 'failed', logs = ?, finished_at = ?
+           WHERE task_id = ? AND step = ?`,
+        )
+        .run(error, now, taskId, step);
+      this.db
+        .prepare(
+          `UPDATE tasks
+           SET status = 'failed', error = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(error, now, taskId);
+    });
+    transaction();
   }
 
   confirmWaitingStep(taskId: string): TaskRecord | undefined {

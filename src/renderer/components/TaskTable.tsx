@@ -26,7 +26,7 @@ const TASK_TYPE_LABEL: Record<TaskType, string> = {
   explosion: '爆款裂变',
   pretrailer: '广告前贴',
   avatar: '数字人口播',
-  native: '原生爆款',
+  native: '原生',
   copywriting: '文案脚本',
   video_scoring: '视频打分',
   lark_download: '飞书下载',

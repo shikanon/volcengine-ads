@@ -36,6 +36,15 @@ export interface AudioConcatSegment {
   durationSec: number;
 }
 
+export type BgmComposeStrategy = 'mix' | 'replace';
+
+export interface ComposeVideosWithBgmOptions {
+  bgmPath?: string;
+  strategy?: BgmComposeStrategy;
+  bgmVolume?: number;
+  sourceVolume?: number;
+}
+
 function run(command: ffmpeg.FfmpegCommand): Promise<void> {
   return new Promise((resolve, reject) => {
     command.on('end', () => resolve());
@@ -96,6 +105,14 @@ function targetVideoSize(primary: MediaInfo, fallback: MediaInfo): { width: numb
 
 function videoFilter(inputIndex: number, outputLabel: string, width: number, height: number): string {
   return `[${inputIndex}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[${outputLabel}]`;
+}
+
+function concatTargetVideoSize(mediaInfos: MediaInfo[]): { width: number; height: number } {
+  const primary = mediaInfos.find((mediaInfo) => mediaInfo.width !== undefined && mediaInfo.height !== undefined);
+  if (primary?.width === undefined || primary.height === undefined) {
+    throw new AppError('E_FFMPEG_FAILED', '无法读取视频尺寸，不能拼接视频');
+  }
+  return { width: evenDimension(primary.width), height: evenDimension(primary.height) };
 }
 
 function filterDuration(durationSec: number | undefined, fallbackDurationSec?: number): string {
@@ -321,8 +338,9 @@ export async function concatVideos(videoPaths: string[], outputPath: string): Pr
     command.input(videoPath);
   }
   const mediaInfos = await Promise.all(videoPaths.map((videoPath) => readMediaInfo(videoPath)));
+  const { width, height } = concatTargetVideoSize(mediaInfos);
   const filters = mediaInfos.flatMap((mediaInfo, index) => [
-    `[${index}:v]fps=30,setsar=1,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[v${index}]`,
+    videoFilter(index, `v${index}`, width, height),
     audioFilter(index, mediaInfo, `a${index}`),
   ]);
   const inputs = videoPaths.map((_videoPath, index) => `[v${index}][a${index}]`).join('');
@@ -341,6 +359,65 @@ export async function concatVideos(videoPaths: string[], outputPath: string): Pr
       .output(outputPath),
   );
   return outputPath;
+}
+
+function normalizeVolume(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(Math.max(value, 0), 2);
+}
+
+async function applyBgm(
+  videoPath: string,
+  bgmPath: string,
+  outputPath: string,
+  options: ComposeVideosWithBgmOptions,
+): Promise<string> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  const strategy = options.strategy ?? 'mix';
+  const bgmVolume = normalizeVolume(options.bgmVolume, strategy === 'replace' ? 1 : 0.25);
+  const sourceVolume = normalizeVolume(options.sourceVolume, 1);
+  const command = ffmpeg()
+    .input(videoPath)
+    .input(bgmPath);
+  const filters =
+    strategy === 'replace'
+      ? [
+          `[1:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${bgmVolume},apad[a]`,
+        ]
+      : [
+          `[0:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${sourceVolume}[voice]`,
+          `[1:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${bgmVolume},apad[bgm]`,
+          '[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0[a]',
+        ];
+  await run(
+    command
+      .complexFilter(filters)
+      .outputOptions([
+        '-map 0:v:0',
+        '-map [a]',
+        '-c:v copy',
+        '-c:a aac',
+        '-shortest',
+        '-movflags +faststart',
+      ])
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
+export async function composeVideosWithBgm(
+  videoPaths: string[],
+  outputPath: string,
+  options: ComposeVideosWithBgmOptions = {},
+): Promise<string> {
+  if (options.bgmPath === undefined) {
+    return concatVideos(videoPaths, outputPath);
+  }
+  const concatPath = `${outputPath}.concat.mp4`;
+  await concatVideos(videoPaths, concatPath);
+  return applyBgm(concatPath, options.bgmPath, outputPath, options);
 }
 
 export async function concatSilentVideos(videoPaths: string[], outputPath: string): Promise<string> {

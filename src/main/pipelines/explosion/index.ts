@@ -3,13 +3,27 @@ import { existsSync } from 'node:fs';
 import { AppError } from '../../errors.js';
 import { downloadDouyinVideo } from '../../media/douyin.js';
 import {
+  composeVideosWithBgm,
   concatSilentVideos,
   extractAudio,
   normalizeVideo,
   trimVideo,
 } from '../../media/ffmpeg.js';
 import type { SeedanceVideoRequest, TranscriptResult } from '../../model-client/index.js';
-import { DEFAULT_VIDEO_RESOLUTION, type ExplosionInput } from '../../../shared/types.js';
+import {
+  DEFAULT_VIDEO_RESOLUTION,
+  type ExplosionFissionConfig,
+  type ExplosionInput,
+  type FissionSlotKey,
+} from '../../../shared/types.js';
+import {
+  estimateFissionCombinations,
+  FISSION_SLOT_DEFINITIONS,
+  getFissionModeDefinition,
+  getFissionSlotAssetCounts,
+  sampleFissionCombinations,
+  type FissionSlotAssetKind,
+} from '../../../shared/workflows.js';
 import {
   artifactPath,
   buildReferencePolicyText,
@@ -48,6 +62,7 @@ interface StoryboardShot {
 interface ScriptParse {
   cta_keywords: string[];
   scenes: StoryboardShot[];
+  fissionSlotCandidates?: Partial<Record<FissionSlotKey, string[]>>;
   selling_points?: string[];
   hookFormula?: string;
   hook_formula?: string;
@@ -104,6 +119,7 @@ interface GeneratedVideoOutput {
   usedReferenceVideo: boolean;
   durationSec: number;
   segments: GeneratedVideoSegment[];
+  fissionCombination?: GeneratedFissionCombination;
 }
 
 interface GeneratedVideoSegment {
@@ -128,9 +144,46 @@ interface ExplosionVideoPromptVariant {
 
 interface ExplosionVideoPrompts {
   variants: ExplosionVideoPromptVariant[];
+  fissionSlotPlanPath?: string;
 }
 
 type ExplosionVoiceGender = 'female' | 'male';
+
+interface GeneratedFissionSlot {
+  slotKey: FissionSlotKey;
+  label: string;
+  assetKind: FissionSlotAssetKind;
+  assetPath: string;
+  assetIndex: number;
+}
+
+interface GeneratedFissionCombination {
+  combinationIndex: number;
+  slots: GeneratedFissionSlot[];
+  videoSlotPaths: string[];
+  bgmPath?: string;
+}
+
+interface FissionSlotPlanVariant extends GeneratedFissionCombination {
+  index: number;
+  finalOutputPath: string;
+}
+
+interface FissionSlotPlan {
+  industry: ExplosionFissionConfig['industry'];
+  mode: ExplosionFissionConfig['mode'];
+  title: string;
+  formula: string;
+  estimate: {
+    total: number;
+    sampleCount: number;
+    formula: string;
+  };
+  variants: FissionSlotPlanVariant[];
+  createdAt: number;
+}
+
+const FISSION_SLOT_PLAN_ARTIFACT = 'fission_slot_plan.json';
 
 function isReferenceVideoRejected(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -243,8 +296,179 @@ function buildStoryboardPrompt(
   });
 }
 
+function parseBooleanSetting(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined) return fallback;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return typeof parsed === 'boolean' ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildFissionContextText(config: ExplosionFissionConfig | undefined): string {
+  if (config === undefined) {
+    return '';
+  }
+  const definition = getFissionModeDefinition(config.industry, config.mode);
+  if (definition === undefined) {
+    return '';
+  }
+  const slotText = definition.slots
+    .map((slot) => `- ${slot.label}（${slot.key}）：${slot.description}`)
+    .join('\n');
+  return [
+    '行业组合式裂变已开启。',
+    `行业：${config.industry}`,
+    `模式：${definition.title}`,
+    `组合公式：${definition.formula}`,
+    '脚本解析阶段请识别可复用高光、可替换片段、利益点、剧情高光、节奏点等槽位候选，并在 JSON 中用 fissionSlotCandidates 记录。',
+    '改写阶段请围绕所选模式保持槽位顺序，生成能服务槽位组合的脚本和缺失槽位生成提示；用户已上传素材的槽位后续会保留原路径。',
+    `槽位定义：\n${slotText}`,
+  ].join('\n');
+}
+
+function buildFissionSlotPlan(ctx: StepContext<ExplosionInput>): FissionSlotPlan | undefined {
+  const config = ctx.input.fissionConfig;
+  if (config === undefined) {
+    return undefined;
+  }
+  const definition = getFissionModeDefinition(config.industry, config.mode);
+  if (definition === undefined) {
+    throw new AppError('E_INPUT_VALIDATION', '行业裂变模式与所选行业不匹配');
+  }
+  const sampledCombinations = sampleFissionCombinations(config, ctx.input.variantCount);
+  if (sampledCombinations.length === 0) {
+    throw new AppError('E_INPUT_VALIDATION', '行业裂变没有可用槽位组合');
+  }
+  const estimate = estimateFissionCombinations(
+    config.industry,
+    config.mode,
+    getFissionSlotAssetCounts(config),
+    ctx.input.variantCount,
+  );
+  const variants = sampledCombinations.map((combination) => {
+    const slots = combination.slots.map((slot) => {
+      const definitionForSlot = FISSION_SLOT_DEFINITIONS[slot.slotKey];
+      return {
+        slotKey: slot.slotKey,
+        label: slot.label,
+        assetKind: definitionForSlot.assetKind,
+        assetPath: slot.assetPath,
+        assetIndex: slot.assetIndex,
+      };
+    });
+    const videoSlotPaths = slots
+      .filter((slot) => slot.assetKind === 'video')
+      .map((slot) => slot.assetPath);
+    const bgmSlot = slots.find((slot) => slot.assetKind === 'audio');
+    const base = {
+      index: combination.index,
+      combinationIndex: combination.combinationIndex,
+      slots,
+      videoSlotPaths,
+      finalOutputPath: artifactPath(ctx.artifactDir, `variant_${combination.index}.mp4`),
+    };
+    return bgmSlot === undefined ? base : { ...base, bgmPath: bgmSlot.assetPath };
+  });
+  return {
+    industry: config.industry,
+    mode: config.mode,
+    title: definition.title,
+    formula: definition.formula,
+    estimate: {
+      total: estimate.total,
+      sampleCount: estimate.sampleCount,
+      formula: estimate.formula,
+    },
+    variants,
+    createdAt: Date.now(),
+  };
+}
+
+async function runFissionSeedance(ctx: StepContext<ExplosionInput>, plan: FissionSlotPlan) {
+  const outputs: GeneratedVideoOutput[] = [];
+  for (const variant of plan.variants) {
+    if (variant.videoSlotPaths.length === 0) {
+      throw new AppError('E_INPUT_VALIDATION', '行业裂变组合缺少可拼接视频槽位');
+    }
+    await ctx.appendLog?.('info', '开始组合式裂变 FFmpeg 拼接', {
+      variantIndex: variant.index,
+      industry: plan.industry,
+      mode: plan.mode,
+      slots: variant.slots.map((slot) => ({
+        slotKey: slot.slotKey,
+        label: slot.label,
+        assetKind: slot.assetKind,
+        assetPath: slot.assetPath,
+        assetIndex: slot.assetIndex,
+      })),
+      videoSlotPaths: variant.videoSlotPaths,
+      ...(variant.bgmPath !== undefined ? { bgmPath: variant.bgmPath } : {}),
+      outputPath: variant.finalOutputPath,
+    });
+    try {
+      await composeVideosWithBgm(variant.videoSlotPaths, variant.finalOutputPath, {
+        ...(variant.bgmPath !== undefined ? { bgmPath: variant.bgmPath } : {}),
+        strategy: 'mix',
+      });
+      await ctx.appendLog?.('info', '组合式裂变 FFmpeg 拼接成功', {
+        variantIndex: variant.index,
+        outputPath: variant.finalOutputPath,
+        videoSlotCount: variant.videoSlotPaths.length,
+        hasBgm: variant.bgmPath !== undefined,
+      });
+    } catch (error) {
+      await ctx.appendLog?.('error', '组合式裂变 FFmpeg 拼接失败', {
+        variantIndex: variant.index,
+        outputPath: variant.finalOutputPath,
+        videoSlotPaths: variant.videoSlotPaths,
+        ...(variant.bgmPath !== undefined ? { bgmPath: variant.bgmPath } : {}),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    ctx.repository.createAsset({
+      taskId: ctx.task.id,
+      kind: 'video',
+      path: variant.finalOutputPath,
+      tags: ['explosion', 'industry_fission', plan.industry, plan.mode],
+    });
+    const fissionCombination: GeneratedFissionCombination =
+      variant.bgmPath === undefined
+        ? {
+            combinationIndex: variant.combinationIndex,
+            slots: variant.slots,
+            videoSlotPaths: variant.videoSlotPaths,
+          }
+        : {
+            combinationIndex: variant.combinationIndex,
+            slots: variant.slots,
+            videoSlotPaths: variant.videoSlotPaths,
+            bgmPath: variant.bgmPath,
+          };
+    outputs.push({
+      index: variant.index,
+      path: variant.finalOutputPath,
+      usedReferenceVideo: false,
+      durationSec: 0,
+      segments: [],
+      fissionCombination,
+    });
+  }
+  return {
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'seedance_outputs.json'), outputs),
+  };
+}
+
 async function runDownload(ctx: StepContext<ExplosionInput>) {
   const douyinCookie = ctx.repository.getSetting('douyinCookie');
+  const autoReadChromeCookies = parseBooleanSetting(
+    ctx.repository.getSetting('douyinAutoReadChromeCookies'),
+    true,
+  );
   const result =
     ctx.input.sourceVideoPath !== undefined
       ? {
@@ -257,17 +481,40 @@ async function runDownload(ctx: StepContext<ExplosionInput>) {
             artifactPath(ctx.artifactDir, 'source.m4a'),
           ),
           metaPath: artifactPath(ctx.artifactDir, 'meta.json'),
+          cookieSource: 'none' as const,
+          cookieRefreshAttempted: false,
+          fallbackToNoCookie: false,
         }
       : douyinCookie !== undefined
         ? await downloadDouyinVideo(ctx.input.douyinUrl ?? '', ctx.artifactDir, {
             cookieHeader: douyinCookie,
+            autoReadChromeCookies,
           })
-        : await downloadDouyinVideo(ctx.input.douyinUrl ?? '', ctx.artifactDir);
+        : await downloadDouyinVideo(ctx.input.douyinUrl ?? '', ctx.artifactDir, {
+            autoReadChromeCookies,
+          });
+  if (ctx.input.sourceVideoPath === undefined) {
+    const cookieSourceLabel: Record<typeof result.cookieSource, string> = {
+      manual_header: '手动配置 Cookie',
+      chrome_browser: '本机 Chrome 登录态',
+      chrome_browser_cached: '本机 Chrome 登录态（缓存）',
+      none: '未使用 Cookie',
+    };
+    await ctx.appendLog?.('info', '抖音下载已完成', {
+      cookieSource: result.cookieSource,
+      cookieSourceLabel: cookieSourceLabel[result.cookieSource],
+      cookieRefreshAttempted: result.cookieRefreshAttempted,
+      fallbackToNoCookie: result.fallbackToNoCookie,
+    });
+  }
   await writeJson(result.metaPath, {
     source: ctx.input.sourceVideoPath ?? ctx.input.douyinUrl,
     sourceType: ctx.input.sourceVideoPath !== undefined ? 'local' : 'douyin',
     sourceVideoPath: result.sourceVideoPath,
     sourceAudioPath: result.sourceAudioPath,
+    cookieSource: result.cookieSource,
+    cookieRefreshAttempted: result.cookieRefreshAttempted,
+    fallbackToNoCookie: result.fallbackToNoCookie,
     warnings: [],
     preparedAt: Date.now(),
   });
@@ -287,9 +534,14 @@ async function runScriptParse(ctx: StepContext<ExplosionInput>) {
   );
   const analysis = await ctx.modelClient.visionVideo(
     artifactPath(ctx.artifactDir, 'source.mp4'),
-    workflowPrompt(ctx, 'explosion.script_parse', {
-      transcriptText: transcriptTextForPrompt(transcript),
-    }),
+    [
+      workflowPrompt(ctx, 'explosion.script_parse', {
+        transcriptText: transcriptTextForPrompt(transcript),
+      }),
+      buildFissionContextText(ctx.input.fissionConfig),
+    ]
+      .filter((item) => item.length > 0)
+      .join('\n\n'),
   );
   const scriptParse = parseModelJson<ScriptParse>(analysis, '爆款分镜解析');
   if (!Array.isArray(scriptParse.cta_keywords) || !Array.isArray(scriptParse.scenes)) {
@@ -319,12 +571,17 @@ async function runRewrite(ctx: StepContext<ExplosionInput>) {
       },
       {
         role: 'user',
-        content: workflowPrompt(ctx, 'explosion.rewrite', {
-          variantCount: ctx.input.variantCount,
-          ctaKeywords: scriptParse.cta_keywords.join(','),
-          transcriptText: transcriptTextForPrompt(transcript),
-          scriptParseJson: JSON.stringify(scriptParse),
-        }),
+        content: [
+          workflowPrompt(ctx, 'explosion.rewrite', {
+            variantCount: ctx.input.variantCount,
+            ctaKeywords: scriptParse.cta_keywords.join(','),
+            transcriptText: transcriptTextForPrompt(transcript),
+            scriptParseJson: JSON.stringify(scriptParse),
+          }),
+          buildFissionContextText(ctx.input.fissionConfig),
+        ]
+          .filter((item) => item.length > 0)
+          .join('\n\n'),
       },
     ],
     { temperature: 0.8 },
@@ -382,6 +639,11 @@ async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
     ? await readJson<ScriptParse>(scriptParsePath)
     : undefined;
   const promptVariants: ExplosionVideoPromptVariant[] = [];
+  const fissionSlotPlan = buildFissionSlotPlan(ctx);
+  const fissionSlotPlanPath =
+    fissionSlotPlan === undefined
+      ? undefined
+      : await writeJson(artifactPath(ctx.artifactDir, FISSION_SLOT_PLAN_ARTIFACT), fissionSlotPlan);
 
   for (const variant of variants) {
     const segments = splitStoryboardForSeedance(variant.storyboard);
@@ -424,11 +686,13 @@ async function runVideoPromptOptimize(ctx: StepContext<ExplosionInput>) {
     }
     promptVariants.push({ index: variant.index, segments: promptSegments });
   }
+  const videoPrompts: ExplosionVideoPrompts =
+    fissionSlotPlanPath === undefined
+      ? { variants: promptVariants }
+      : { variants: promptVariants, fissionSlotPlanPath };
 
   return {
-    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), {
-      variants: promptVariants,
-    }),
+    artifactPath: await writeJson(artifactPath(ctx.artifactDir, 'video_prompts.json'), videoPrompts),
   };
 }
 
@@ -442,6 +706,11 @@ async function runSeedance(ctx: StepContext<ExplosionInput>) {
   const videoPrompts = existsSync(videoPromptsPath)
     ? await readJson<ExplosionVideoPrompts>(videoPromptsPath)
     : undefined;
+  const fissionSlotPlanPath =
+    videoPrompts?.fissionSlotPlanPath ?? artifactPath(ctx.artifactDir, FISSION_SLOT_PLAN_ARTIFACT);
+  if (ctx.input.fissionConfig !== undefined && existsSync(fissionSlotPlanPath)) {
+    return runFissionSeedance(ctx, await readJson<FissionSlotPlan>(fissionSlotPlanPath));
+  }
   const referencePath = await trimVideo(
     artifactPath(ctx.artifactDir, 'source.mp4'),
     artifactPath(ctx.artifactDir, 'seedance_reference.mp4'),

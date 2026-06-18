@@ -52,6 +52,83 @@ describe('validateCreateTaskRequest', () => {
     });
   });
 
+  it('accepts explosion industry fission config and keeps default compatibility', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const painPretrailer = join(dir, 'pain.mp4');
+    const productHighlight = join(dir, 'product.mp4');
+    const benefitEnding = join(dir, 'benefit.mp4');
+    const bgm = join(dir, 'bgm.mp3');
+    for (const path of [painPretrailer, productHighlight, benefitEnding, bgm]) {
+      writeFileSync(path, 'asset');
+    }
+
+    expect(
+      validateCreateTaskRequest({
+        type: 'explosion',
+        input: {
+          douyinUrl: 'https://v.douyin.com/demo',
+          variantCount: 3,
+          fissionConfig: {
+            industry: 'ecommerce',
+            mode: 'pain_pretrailer',
+            slotAssetPaths: {
+              pain_pretrailer: [painPretrailer],
+              product_highlight: [productHighlight],
+              benefit_ending: [benefitEnding],
+            },
+            bgmPaths: [bgm],
+          },
+        },
+      }),
+    ).toEqual({
+      type: 'explosion',
+      input: {
+        douyinUrl: 'https://v.douyin.com/demo',
+        variantCount: 3,
+        resolution: DEFAULT_VIDEO_RESOLUTION,
+        fissionConfig: {
+          industry: 'ecommerce',
+          mode: 'pain_pretrailer',
+          slotAssetPaths: {
+            pain_pretrailer: [painPretrailer],
+            product_highlight: [productHighlight],
+            benefit_ending: [benefitEnding],
+          },
+          bgmPaths: [bgm],
+        },
+      },
+    });
+  });
+
+  it('rejects explosion industry fission config with missing required slot', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const productHighlight = join(dir, 'product.mp4');
+    const benefitEnding = join(dir, 'benefit.mp4');
+    const bgm = join(dir, 'bgm.mp3');
+    for (const path of [productHighlight, benefitEnding, bgm]) {
+      writeFileSync(path, 'asset');
+    }
+
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'explosion',
+        input: {
+          douyinUrl: 'https://v.douyin.com/demo',
+          variantCount: 3,
+          fissionConfig: {
+            industry: 'ecommerce',
+            mode: 'pain_pretrailer',
+            slotAssetPaths: {
+              product_highlight: [productHighlight],
+              benefit_ending: [benefitEnding],
+            },
+            bgmPaths: [bgm],
+          },
+        },
+      }),
+    ).toThrowError(/缺少必填槽位素材：3秒痛点前贴/u);
+  });
+
   it('rejects unsupported task video resolution', () => {
     const request = {
       type: 'explosion',

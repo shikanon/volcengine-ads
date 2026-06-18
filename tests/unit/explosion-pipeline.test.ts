@@ -14,7 +14,7 @@ import type {
   TranscriptResult,
   VideoResult,
 } from '../../src/main/model-client/index.js';
-import { concatSilentVideos } from '../../src/main/media/ffmpeg.js';
+import { composeVideosWithBgm, concatSilentVideos } from '../../src/main/media/ffmpeg.js';
 import { explosionPipeline } from '../../src/main/pipelines/explosion/index.js';
 import type { StepContext } from '../../src/main/pipelines/types.js';
 import type { AssetRecord, ExplosionInput, TaskRecord } from '../../src/shared/types.js';
@@ -25,6 +25,13 @@ vi.mock('../../src/main/media/ffmpeg.js', () => ({
     await writeFile(outputPath, videoPaths.join('\n'), 'utf8');
     return outputPath;
   }),
+  composeVideosWithBgm: vi.fn(
+    async (videoPaths: string[], outputPath: string) => {
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `concat-av:${videoPaths.join(',')}`, 'utf8');
+    return outputPath;
+    },
+  ),
   extractAudio: vi.fn(),
   normalizeVideo: vi.fn(),
   trimVideo: vi.fn(async (_inputPath: string, outputPath: string) => {
@@ -391,5 +398,231 @@ describe('explosionPipeline', () => {
     };
     expect(prompts.variants[0]?.segments[0]?.audioPath).toBeUndefined();
     expect(prompts.variants[0]?.segments[0]?.prompt).toContain('不额外传入 reference_audio');
+  });
+
+  it('writes fission slot plan artifact and keeps default prompt artifact compatible', async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), 'explosion-pipeline-'));
+    await writeFile(
+      join(artifactDir, 'variants.json'),
+      JSON.stringify([
+        {
+          index: 1,
+          copy: '痛点开场',
+          script: '按槽位组合成片。',
+          storyboard: [{ index: 1, durationSec: 4, visualPrompt: '槽位组合说明' }],
+        },
+      ]),
+      'utf8',
+    );
+
+    const step = explosionPipeline.steps.find((item) => item.name === 'video_prompt_optimize');
+    if (step === undefined) {
+      throw new Error('video_prompt_optimize step missing');
+    }
+    const input: ExplosionInput = {
+      sourceVideoPath: join(artifactDir, 'source.mp4'),
+      variantCount: 2,
+      fissionConfig: {
+        industry: 'ecommerce',
+        mode: 'pain_pretrailer',
+        slotAssetPaths: {
+          pain_pretrailer: ['/tmp/pain-1.mp4', '/tmp/pain-2.mp4'],
+          product_highlight: ['/tmp/product-1.mp4'],
+          benefit_ending: ['/tmp/benefit-1.mp4'],
+        },
+        bgmPaths: ['/tmp/bgm-1.mp3', '/tmp/bgm-2.mp3'],
+      },
+    };
+    const task: TaskRecord = {
+      id: 'task-explosion',
+      type: 'explosion',
+      status: 'running',
+      progress: 0,
+      input,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      steps: [],
+    };
+
+    await step.runStep({
+      task,
+      input,
+      artifactDir,
+      repository: {} as TaskRepository,
+      modelClient: new ExplosionMockModelClient(),
+      workflowPrompts: {},
+      emitProgress: () => undefined,
+    });
+
+    const prompts = JSON.parse(await readFile(join(artifactDir, 'video_prompts.json'), 'utf8')) as {
+      fissionSlotPlanPath?: string;
+    };
+    expect(prompts.fissionSlotPlanPath).toBe(join(artifactDir, 'fission_slot_plan.json'));
+    const plan = JSON.parse(await readFile(join(artifactDir, 'fission_slot_plan.json'), 'utf8')) as {
+      industry: string;
+      mode: string;
+      estimate: { total: number; sampleCount: number; formula: string };
+      variants: Array<{
+        index: number;
+        combinationIndex: number;
+        videoSlotPaths: string[];
+        bgmPath?: string;
+        finalOutputPath: string;
+      }>;
+    };
+    expect(plan).toMatchObject({
+      industry: 'ecommerce',
+      mode: 'pain_pretrailer',
+      estimate: { total: 4, sampleCount: 2, formula: '2 × 1 × 1 × 2 = 4' },
+    });
+    expect(plan.variants).toHaveLength(2);
+    expect(plan.variants[0]).toMatchObject({
+      index: 1,
+      combinationIndex: 0,
+      videoSlotPaths: ['/tmp/pain-1.mp4', '/tmp/product-1.mp4', '/tmp/benefit-1.mp4'],
+      bgmPath: '/tmp/bgm-1.mp3',
+      finalOutputPath: join(artifactDir, 'variant_1.mp4'),
+    });
+  });
+
+  it('composes fission sampled slot videos and registers final variant assets', async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), 'explosion-pipeline-'));
+    await writeFile(join(artifactDir, 'variants.json'), '[]', 'utf8');
+    await writeFile(
+      join(artifactDir, 'fission_slot_plan.json'),
+      JSON.stringify({
+        industry: 'short_drama',
+        mode: 'pretrailer_remix',
+        title: '前贴二创',
+        formula: '3秒前贴 + 高光1 + 高光2 + BGM',
+        estimate: { total: 1, sampleCount: 1, formula: '1 × 1 × 1 × 1 = 1' },
+        variants: [
+          {
+            index: 1,
+            combinationIndex: 0,
+            slots: [
+              {
+                slotKey: 'pretrailer',
+                label: '3秒前贴',
+                assetKind: 'video',
+                assetPath: '/tmp/pretrailer.mp4',
+                assetIndex: 0,
+              },
+              {
+                slotKey: 'highlight_1',
+                label: '高光1',
+                assetKind: 'video',
+                assetPath: '/tmp/highlight-1.mp4',
+                assetIndex: 0,
+              },
+              {
+                slotKey: 'highlight_2',
+                label: '高光2',
+                assetKind: 'video',
+                assetPath: '/tmp/highlight-2.mp4',
+                assetIndex: 0,
+              },
+              {
+                slotKey: 'bgm',
+                label: 'BGM',
+                assetKind: 'audio',
+                assetPath: '/tmp/bgm.mp3',
+                assetIndex: 0,
+              },
+            ],
+            videoSlotPaths: ['/tmp/pretrailer.mp4', '/tmp/highlight-1.mp4', '/tmp/highlight-2.mp4'],
+            bgmPath: '/tmp/bgm.mp3',
+            finalOutputPath: join(artifactDir, 'variant_1.mp4'),
+          },
+        ],
+        createdAt: Date.now(),
+      }),
+      'utf8',
+    );
+
+    const step = explosionPipeline.steps.find((item) => item.name === 'seedance');
+    if (step === undefined) {
+      throw new Error('seedance step missing');
+    }
+    const createdAssets: AssetRecord[] = [];
+    const input: ExplosionInput = {
+      sourceVideoPath: join(artifactDir, 'source.mp4'),
+      variantCount: 1,
+      fissionConfig: {
+        industry: 'short_drama',
+        mode: 'pretrailer_remix',
+        slotAssetPaths: {
+          pretrailer: ['/tmp/pretrailer.mp4'],
+          highlight_1: ['/tmp/highlight-1.mp4'],
+          highlight_2: ['/tmp/highlight-2.mp4'],
+        },
+        bgmPaths: ['/tmp/bgm.mp3'],
+      },
+    };
+    const task: TaskRecord = {
+      id: 'task-explosion',
+      type: 'explosion',
+      status: 'running',
+      progress: 0,
+      input,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      steps: [],
+    };
+    const modelClient = new ExplosionMockModelClient();
+    const appendLog = vi.fn(async () => undefined);
+
+    await step.runStep({
+      task,
+      input,
+      artifactDir,
+      repository: createAssetRepository(createdAssets),
+      modelClient,
+      workflowPrompts: {},
+      emitProgress: () => undefined,
+      appendLog,
+    });
+
+    expect(modelClient.videoRequests).toHaveLength(0);
+    expect(composeVideosWithBgm).toHaveBeenCalledWith(
+      ['/tmp/pretrailer.mp4', '/tmp/highlight-1.mp4', '/tmp/highlight-2.mp4'],
+      join(artifactDir, 'variant_1.mp4'),
+      { bgmPath: '/tmp/bgm.mp3', strategy: 'mix' },
+    );
+    expect(appendLog).toHaveBeenCalledWith(
+      'info',
+      '开始组合式裂变 FFmpeg 拼接',
+      expect.objectContaining({
+        variantIndex: 1,
+        bgmPath: '/tmp/bgm.mp3',
+        outputPath: join(artifactDir, 'variant_1.mp4'),
+      }),
+    );
+    expect(appendLog).toHaveBeenCalledWith(
+      'info',
+      '组合式裂变 FFmpeg 拼接成功',
+      expect.objectContaining({
+        variantIndex: 1,
+        outputPath: join(artifactDir, 'variant_1.mp4'),
+        hasBgm: true,
+      }),
+    );
+    expect(createdAssets[0]).toMatchObject({
+      taskId: 'task-explosion',
+      kind: 'video',
+      path: join(artifactDir, 'variant_1.mp4'),
+      tags: ['explosion', 'industry_fission', 'short_drama', 'pretrailer_remix'],
+    });
+    const outputs = JSON.parse(await readFile(join(artifactDir, 'seedance_outputs.json'), 'utf8')) as Array<{
+      path: string;
+      fissionCombination?: { bgmPath?: string; videoSlotPaths: string[] };
+    }>;
+    expect(outputs[0]).toMatchObject({
+      path: join(artifactDir, 'variant_1.mp4'),
+      fissionCombination: {
+        videoSlotPaths: ['/tmp/pretrailer.mp4', '/tmp/highlight-1.mp4', '/tmp/highlight-2.mp4'],
+        bgmPath: '/tmp/bgm.mp3',
+      },
+    });
   });
 });

@@ -549,7 +549,7 @@ async function runScriptWriter(ctx: StepContext<NativeInput>) {
 }
 
 async function runScriptConfirm(ctx: StepContext<NativeInput>) {
-  return waitForScriptConfirmation(ctx, 'scripts.md', '原生爆款素材脚本文案');
+  return waitForScriptConfirmation(ctx, 'scripts.md', '原生素材脚本文案');
 }
 
 async function runStoryboardBuilder(ctx: StepContext<NativeInput>) {

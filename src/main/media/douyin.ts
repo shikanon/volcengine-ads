@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 
 import { execa } from 'execa';
 
+import type { DouyinCookieSource } from '../../shared/types.js';
 import { AppError } from '../errors.js';
 import { extractAudio } from './ffmpeg.js';
 
@@ -18,10 +19,14 @@ export interface DouyinDownloadResult {
   sourceVideoPath: string;
   sourceAudioPath: string;
   metaPath: string;
+  cookieSource: DouyinCookieSource;
+  cookieRefreshAttempted: boolean;
+  fallbackToNoCookie: boolean;
 }
 
 export interface DownloadDouyinVideoOptions {
   cookieHeader?: string;
+  autoReadChromeCookies?: boolean;
 }
 
 const YT_DLP_RELEASE_BASE_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
@@ -130,11 +135,19 @@ export function explainDouyinDownloadFailure(error: unknown): string | undefined
   const message = error instanceof Error ? error.message : String(error);
 
   if (
-    /Fresh cookies .* needed|cookies-from-browser|Sign in to confirm|login required|cookie.*expired|session expired|登录已过期|登录失效/iu.test(
+    /Fresh cookies .* needed|Sign in to confirm|login required|cookie.*expired|session expired|登录已过期|登录失效/iu.test(
       message,
     )
   ) {
-    return '抖音当前要求 fresh cookies 或浏览器登录态已过期。请先在 Chrome 中重新登录抖音，再重试下载';
+    return '抖音要求提供最新登录态。请先在 Chrome 中重新登录抖音，然后在设置中确认「自动读取本机 Chrome Cookies」已开启，或手动粘贴最新 Cookie 后重试';
+  }
+
+  if (
+    /cookies-from-browser|could not find chrome|could not locate chrome|browser cookie|keyring|secretstorage|cannot decrypt|failed to decrypt|chrome.*not installed/iu.test(
+      message,
+    )
+  ) {
+    return '无法从本机 Chrome 读取登录态。请确认已安装 Chrome 并在其中登录抖音，或在设置中关闭「自动读取本机 Chrome Cookies」后手动粘贴 Cookie 重试';
   }
 
   if (/Unable to handle request|Unsupported URL|Extracting URL:\s*$|Invalid URL/iu.test(message)) {
@@ -142,7 +155,7 @@ export function explainDouyinDownloadFailure(error: unknown): string | undefined
   }
 
   if (/Failed to parse JSON|Downloading web detail JSON|web detail JSON/iu.test(message)) {
-    return '抖音详情页解析失败，通常是链接带了多余字符，或平台已要求 fresh cookies';
+    return '抖音详情页解析失败，通常是链接带了多余字符，或平台已要求 fresh cookies。建议先在 Chrome 重新登录抖音后重试';
   }
 
   if (/403|429|timed out|ENOTFOUND|ECONNRESET|ECONNREFUSED|network/iu.test(message)) {
@@ -366,6 +379,11 @@ export async function downloadDouyinVideo(
   const ytDlpPath = await resolveYtDlpPath(artifactDir);
   const cookieFilePath = await resolveUsableChromeCookieCachePath(userDataDirFromArtifactDir(artifactDir));
   await mkdir(dirname(sourceVideoPath), { recursive: true });
+
+  let cookieSource: DouyinCookieSource = 'none';
+  let cookieRefreshAttempted = false;
+  let fallbackToNoCookie = false;
+
   try {
     try {
       const configuredCookieHeader =
@@ -373,35 +391,52 @@ export async function downloadDouyinVideo(
           ? normalizeDouyinCookieHeader(options.cookieHeader)
           : undefined;
       if (configuredCookieHeader) {
+        cookieSource = 'manual_header';
         await execa(
           ytDlpPath,
           buildYtDlpCookieHeaderArgs(sourceVideoPath, normalizedUrl, configuredCookieHeader),
         );
+      } else if (options.autoReadChromeCookies === false) {
+        cookieSource = 'none';
+        await execa(ytDlpPath, buildYtDlpArgs(sourceVideoPath, normalizedUrl, false));
       } else {
-      const usableCookieFile = (await pathExists(cookieFilePath))
-        ? cookieFilePath
-        : await exportChromeCookiesToCache(ytDlpPath, artifactDir, normalizedUrl);
-      try {
-        await execa(ytDlpPath, buildYtDlpCookieFileArgs(sourceVideoPath, normalizedUrl, usableCookieFile));
-      } catch (error) {
-        if (!shouldRefreshChromeCookieCache(error)) {
-          throw error;
+        const cacheExists = await pathExists(cookieFilePath);
+        const usableCookieFile = cacheExists
+          ? cookieFilePath
+          : await exportChromeCookiesToCache(ytDlpPath, artifactDir, normalizedUrl);
+        cookieSource = cacheExists ? 'chrome_browser_cached' : 'chrome_browser';
+        try {
+          await execa(ytDlpPath, buildYtDlpCookieFileArgs(sourceVideoPath, normalizedUrl, usableCookieFile));
+        } catch (error) {
+          if (!shouldRefreshChromeCookieCache(error)) {
+            throw error;
+          }
+          cookieRefreshAttempted = true;
+          const refreshedCookieFile = await exportChromeCookiesToCache(ytDlpPath, artifactDir, normalizedUrl);
+          cookieSource = 'chrome_browser';
+          await execa(
+            ytDlpPath,
+            buildYtDlpCookieFileArgs(sourceVideoPath, normalizedUrl, refreshedCookieFile),
+          );
         }
-        const refreshedCookieFile = await exportChromeCookiesToCache(ytDlpPath, artifactDir, normalizedUrl);
-        await execa(
-          ytDlpPath,
-          buildYtDlpCookieFileArgs(sourceVideoPath, normalizedUrl, refreshedCookieFile),
-        );
-      }
       }
     } catch (error) {
       if (!shouldRetryWithoutChromeCookies(error)) {
         throw error;
       }
+      fallbackToNoCookie = true;
+      cookieSource = 'none';
       await execa(ytDlpPath, buildYtDlpArgs(sourceVideoPath, normalizedUrl, false));
     }
     await extractAudio(sourceVideoPath, sourceAudioPath);
-    return { sourceVideoPath, sourceAudioPath, metaPath };
+    return {
+      sourceVideoPath,
+      sourceAudioPath,
+      metaPath,
+      cookieSource,
+      cookieRefreshAttempted,
+      fallbackToNoCookie,
+    };
   } catch (error) {
     throw new AppError('E_DOWNLOAD_FAILED', explainDouyinDownloadFailure(error), { cause: error });
   }

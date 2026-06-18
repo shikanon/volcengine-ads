@@ -83,6 +83,7 @@ export class TaskWorker {
   cancelTask(taskId: string): TaskRecord | undefined {
     const task = this.repository.cancelTask(taskId);
     if (task) {
+      this.activeTaskIds.delete(taskId);
       this.emitProgress({
         taskId: task.id,
         status: 'canceled',

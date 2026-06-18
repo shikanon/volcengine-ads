@@ -20,6 +20,7 @@ export function Settings() {
   useEffect(() => {
     if (settings) {
       const values: SettingsUpdate = {
+        douyinAutoReadChromeCookies: settings.douyinAutoReadChromeCookies,
         concurrency: settings.concurrency,
         defaultPretrailerStyle: settings.defaultPretrailerStyle,
         complianceAccepted: settings.complianceAccepted,
@@ -161,9 +162,17 @@ export function Settings() {
             <section className="settings-section">
               <Typography.Title level={5}>本地行为</Typography.Title>
               <Form.Item
+                name="douyinAutoReadChromeCookies"
+                label="自动读取本机 Chrome Cookies"
+                extra="开启后，抖音下载会优先尝试从本机 Chrome 浏览器读取登录态；若读取失败或抖音要求 fresh cookies，会回退到下方手动 Cookie 或无 Cookie 重试。"
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item
                 name="douyinCookie"
-                label="抖音 Cookie"
-                extra="可选。把 Chrome 开发者工具里请求头中的 Cookie 原文粘贴到这里；裂变任务下载抖音视频时会优先使用该配置。"
+                label="抖音 Cookie（兜底）"
+                extra="可选。当自动读取不可用时，把 Chrome 开发者工具里请求头中的 Cookie 原文粘贴到这里；裂变任务下载抖音视频时会优先使用该配置。"
               >
                 <Input.TextArea
                   autoSize={{ minRows: 4, maxRows: 8 }}

@@ -22,6 +22,7 @@ import {
   shouldRefreshChromeCookieCache,
   shouldRetryWithoutChromeCookies,
 } from '../../src/main/media/douyin.js';
+import type { DouyinCookieSource } from '../../src/shared/types.js';
 
 const originalResourcesPath = process.resourcesPath;
 
@@ -69,12 +70,34 @@ describe('douyin yt-dlp path', () => {
           'ERROR: [Douyin] 7647393544173158821: Fresh cookies (not necessarily logged in) are needed',
         ),
       ),
-    ).toContain('重新登录抖音');
+    ).toContain('抖音要求提供最新登录态');
     expect(
       explainDouyinDownloadFailure(
         new Error('WARNING: [Douyin] Failed to parse JSON\nDownloading web detail JSON'),
       ),
     ).toContain('详情页解析失败');
+  });
+
+  it('maps chrome-cookie bootstrap failures to a dedicated guidance message', () => {
+    expect(
+      explainDouyinDownloadFailure(new Error('could not find chrome cookies database')),
+    ).toContain('无法从本机 Chrome 读取登录态');
+    expect(
+      explainDouyinDownloadFailure(new Error('failed to decrypt chrome cookie store')),
+    ).toContain('无法从本机 Chrome 读取登录态');
+    expect(
+      explainDouyinDownloadFailure(new Error('cannot decrypt chrome keyring')),
+    ).toContain('无法从本机 Chrome 读取登录态');
+  });
+
+  it('exposes cookie source values covering all four states', () => {
+    const sources: DouyinCookieSource[] = [
+      'manual_header',
+      'chrome_browser',
+      'chrome_browser_cached',
+      'none',
+    ];
+    expect(sources).toHaveLength(4);
   });
 
   it('builds yt-dlp args with chrome cookies enabled by default', () => {

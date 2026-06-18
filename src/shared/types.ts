@@ -32,6 +32,40 @@ export type CopywritingScriptFormat = 'short_video' | 'feed_ad' | 'live_stream';
 export type CopywritingIndustry = NativeIndustry | 'auto';
 export type LarkDocumentType = 'wiki' | 'docx';
 export type AdVideoScoringCategory = 'brand' | 'performance' | 'creative';
+export type FissionIndustry = 'ecommerce' | 'short_drama';
+export type EcommerceFissionMode =
+  | 'pain_pretrailer'
+  | 'benefit_point'
+  | 'realshot_digital_human'
+  | 'sequence_remix';
+export type ShortDramaFissionMode =
+  | 'trend_remix'
+  | 'pretrailer_remix'
+  | 'commentary_remix'
+  | 'beat_cut';
+export type ExplosionFissionMode = EcommerceFissionMode | ShortDramaFissionMode;
+export type FissionSlotKey =
+  | 'pain_pretrailer'
+  | 'product_highlight'
+  | 'benefit_ending'
+  | 'benefit_point'
+  | 'action_guidance'
+  | 'digital_human'
+  | 'realshot_ambience'
+  | 'product_close_up'
+  | 'fixed_intro'
+  | 'remix_clip'
+  | 'fixed_outro'
+  | 'highlight_1'
+  | 'highlight_2'
+  | 'highlight_3'
+  | 'pretrailer'
+  | 'commentary'
+  | 'original_highlight'
+  | 'beat_clip_1'
+  | 'beat_clip_2'
+  | 'beat_clip_3'
+  | 'bgm';
 
 export const DEFAULT_VIDEO_RESOLUTION: VideoResolution = '720p';
 
@@ -134,6 +168,14 @@ export interface ExplosionInput {
   sourceVideoPath?: string;
   variantCount: number;
   resolution?: VideoResolution;
+  fissionConfig?: ExplosionFissionConfig;
+}
+
+export interface ExplosionFissionConfig {
+  industry: FissionIndustry;
+  mode: ExplosionFissionMode;
+  slotAssetPaths?: Partial<Record<FissionSlotKey, string[]>>;
+  bgmPaths?: string[];
 }
 
 export const PRETRAILER_VIDEO_TYPE_DEFINITIONS = [
@@ -367,6 +409,12 @@ export interface AvatarRecord {
   source: 'builtin' | 'user';
 }
 
+export type DouyinCookieSource =
+  | 'manual_header'
+  | 'chrome_browser'
+  | 'chrome_browser_cached'
+  | 'none';
+
 export interface SettingsState {
   seedanceConfigured: boolean;
   imageConfigured: boolean;
@@ -374,6 +422,7 @@ export interface SettingsState {
   ttsConfigured: boolean;
   asrConfigured: boolean;
   douyinCookie?: string;
+  douyinAutoReadChromeCookies: boolean;
   seedanceApiKey?: string;
   imageApiKey?: string;
   llmApiKey?: string;
@@ -409,6 +458,7 @@ export interface ProviderPublicSettings {
 
 export interface SettingsUpdate {
   douyinCookie?: string;
+  douyinAutoReadChromeCookies?: boolean;
   seedanceApiKey?: string;
   imageApiKey?: string;
   llmApiKey?: string;

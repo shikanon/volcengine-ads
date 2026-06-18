@@ -31,7 +31,7 @@ const WORKFLOW_LAUNCHERS = [
   {
     key: 'native',
     icon: <RocketOutlined />,
-    title: '原生爆款素材',
+    title: '原生素材',
     description: '按行业广告文案脚本生成概念、脚本、素材和成片。',
     meta: '六行业模板',
   },

@@ -53,7 +53,7 @@ type PageKey =
 const PAGE_TITLES: Record<PageKey, string> = {
   home: '工作台',
   explosion: '广告爆款裂变',
-  native: '原生爆款素材',
+  native: '原生素材',
   copywriting: '广告文案脚本',
   pretrailer: '广告前贴',
   avatar: '数字人口播',
@@ -82,7 +82,7 @@ const NAV_ITEMS: Array<{ key: PageKey; icon: ReactNode; label: string }> = [
   { key: 'home', icon: <HomeOutlined />, label: '工作台' },
   { key: 'copywriting', icon: <FileTextOutlined />, label: '广告文案脚本编写' },
   { key: 'explosion', icon: <ThunderboltOutlined />, label: '广告爆款素材裂变' },
-  { key: 'native', icon: <RocketOutlined />, label: '原生爆款素材生成' },
+  { key: 'native', icon: <RocketOutlined />, label: '原生素材生成' },
   { key: 'pretrailer', icon: <PlayCircleOutlined />, label: '广告吸引前贴生成' },
   { key: 'avatar', icon: <UserOutlined />, label: '广告数字人口播' },
   { key: 'video_scoring', icon: <BarChartOutlined />, label: '广告视频打分' },

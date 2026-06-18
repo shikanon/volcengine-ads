@@ -7,7 +7,12 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { concatAudioSegments, concatVideos, concatWithFade } from '../../src/main/media/ffmpeg.js';
+import {
+  composeVideosWithBgm,
+  concatAudioSegments,
+  concatVideos,
+  concatWithFade,
+} from '../../src/main/media/ffmpeg.js';
 
 const require = createRequire(import.meta.url);
 const rawFfmpegPath = require('ffmpeg-static') as string | null;
@@ -23,6 +28,23 @@ function runFfmpeg(args: string[]): Promise<void> {
       resolve();
     });
   });
+}
+
+function ffmpegOutput(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(ffmpegBinaryPath, args, { windowsHide: true, maxBuffer: 1024 * 1024 * 4 }, (error, stdout, stderr) => {
+      if (error && !/At least one output file must be specified/u.test(stderr)) {
+        reject(error);
+        return;
+      }
+      resolve(`${stdout}\n${stderr}`);
+    });
+  });
+}
+
+async function hasAudioStream(inputPath: string): Promise<boolean> {
+  const output = await ffmpegOutput(['-hide_banner', '-i', inputPath]);
+  return /Stream #\d+:\d+(?:\[[^\]]+\])?(?:\([^)]+\))?: Audio:/u.test(output);
 }
 
 async function createSilentVideo(outputPath: string, size = '64x64'): Promise<void> {
@@ -87,6 +109,35 @@ describe('ffmpeg audio-tolerant video composition', () => {
 
     await expect(concatVideos([silentPath, audioPath], outputPath)).resolves.toBe(outputPath);
     await expect(access(outputPath)).resolves.toBeUndefined();
+  });
+
+  it('concats videos after normalizing mismatched segment dimensions', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ffmpeg-video-size-concat-'));
+    const firstPath = join(dir, 'first.mp4');
+    const secondPath = join(dir, 'second.mp4');
+    const outputPath = join(dir, 'concat.mp4');
+    await createVideoWithAudio(firstPath, '96x160');
+    await createVideoWithAudio(secondPath, '128x224');
+
+    await expect(concatVideos([firstPath, secondPath], outputPath)).resolves.toBe(outputPath);
+    await expect(access(outputPath)).resolves.toBeUndefined();
+  });
+
+  it('composes slot videos with BGM while keeping an audio stream for silent clips', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ffmpeg-bgm-compose-'));
+    const silentPath = join(dir, 'silent.mp4');
+    const voicePath = join(dir, 'voice.mp4');
+    const bgmPath = join(dir, 'bgm.mp3');
+    const outputPath = join(dir, 'final.mp4');
+    await createSilentVideo(silentPath, '96x160');
+    await createVideoWithAudio(voicePath, '128x224');
+    await createAudio(bgmPath);
+
+    await expect(
+      composeVideosWithBgm([silentPath, voicePath], outputPath, { bgmPath }),
+    ).resolves.toBe(outputPath);
+    await expect(access(outputPath)).resolves.toBeUndefined();
+    await expect(hasAudioStream(outputPath)).resolves.toBe(true);
   });
 
   it('fades videos when the source segment has no audio stream', async () => {

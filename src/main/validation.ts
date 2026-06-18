@@ -11,13 +11,24 @@ import {
   VIDEO_RESOLUTION_OPTIONS,
   normalizePretrailerStyle,
 } from '../shared/types.js';
+import {
+  FISSION_INDUSTRY_OPTIONS,
+  FISSION_MODE_DEFINITIONS,
+  FISSION_MODE_VALUES,
+  FISSION_SLOT_DEFINITIONS,
+  FISSION_SLOT_KEYS,
+  validateFissionCombinationInputs,
+} from '../shared/workflows.js';
 import type {
   AvatarInput,
   CopywritingIndustry,
   CopywritingInput,
   CopywritingScriptFormat,
   CreateTaskRequest,
+  ExplosionFissionConfig,
+  ExplosionFissionMode,
   ExplosionInput,
+  FissionIndustry,
   LarkDownloadInput,
   NativeIndustry,
   NativeInput,
@@ -71,6 +82,82 @@ function normalizeVideoResolution(value: unknown): VideoResolution {
   throw new AppError('E_INPUT_VALIDATION', '视频分辨率只支持 480P、720P、1080P');
 }
 
+function validatePathList(value: unknown, field: string): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new AppError('E_INPUT_VALIDATION', `${field} 必须是文件路径数组`);
+  }
+  return value.map((item, index) => {
+    const path = requireString(item, `${field} ${index + 1}`);
+    if (!existsSync(path)) {
+      throw new AppError('E_INPUT_VALIDATION', `${field} 不存在：${path}`);
+    }
+    return path;
+  });
+}
+
+function validateExplosionFissionConfig(
+  value: unknown,
+  variantCount: number,
+): ExplosionFissionConfig | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new AppError('E_INPUT_VALIDATION', '行业裂变配置格式错误');
+  }
+  const industry = value.industry;
+  if (
+    typeof industry !== 'string' ||
+    !FISSION_INDUSTRY_OPTIONS.includes(industry as FissionIndustry)
+  ) {
+    throw new AppError('E_INPUT_VALIDATION', '行业裂变只支持电商和短剧');
+  }
+  const mode = value.mode;
+  if (typeof mode !== 'string' || !FISSION_MODE_VALUES.includes(mode as ExplosionFissionMode)) {
+    throw new AppError('E_INPUT_VALIDATION', '行业裂变模式不支持');
+  }
+  if (FISSION_MODE_DEFINITIONS[mode as ExplosionFissionMode].industry !== industry) {
+    throw new AppError('E_INPUT_VALIDATION', '行业裂变模式与所选行业不匹配');
+  }
+
+  const slotAssetPaths: ExplosionFissionConfig['slotAssetPaths'] = {};
+  if (value.slotAssetPaths !== undefined && value.slotAssetPaths !== null) {
+    if (!isRecord(value.slotAssetPaths)) {
+      throw new AppError('E_INPUT_VALIDATION', '行业裂变槽位素材格式错误');
+    }
+    for (const slotKey of FISSION_SLOT_KEYS) {
+      const paths = validatePathList(
+        value.slotAssetPaths[slotKey],
+        FISSION_SLOT_DEFINITIONS[slotKey].label,
+      );
+      if (paths.length > 0) {
+        slotAssetPaths[slotKey] = paths;
+      }
+    }
+  }
+
+  const bgmPaths = validatePathList(value.bgmPaths, 'BGM');
+  const config: ExplosionFissionConfig = {
+    industry: industry as FissionIndustry,
+    mode: mode as ExplosionFissionMode,
+  };
+  if (Object.keys(slotAssetPaths).length > 0) {
+    config.slotAssetPaths = slotAssetPaths;
+  }
+  if (bgmPaths.length > 0) {
+    config.bgmPaths = bgmPaths;
+  }
+
+  const result = validateFissionCombinationInputs(config, variantCount);
+  if (!result.valid) {
+    throw new AppError('E_INPUT_VALIDATION', result.errors.join('；'));
+  }
+  return config;
+}
+
 function validateExplosion(input: unknown): ExplosionInput {
   if (!isRecord(input)) {
     throw new AppError('E_INPUT_VALIDATION', '爆款裂变输入格式错误');
@@ -92,9 +179,15 @@ function validateExplosion(input: unknown): ExplosionInput {
     throw new AppError('E_INPUT_VALIDATION', '裂变数量必须在 1..10');
   }
   const resolution = normalizeVideoResolution(input.resolution);
-  return sourceVideoPath.length > 0
-    ? { sourceVideoPath, variantCount, resolution }
-    : { douyinUrl, variantCount, resolution };
+  const fissionConfig = validateExplosionFissionConfig(input.fissionConfig, variantCount);
+  const output: ExplosionInput =
+    sourceVideoPath.length > 0
+      ? { sourceVideoPath, variantCount, resolution }
+      : { douyinUrl, variantCount, resolution };
+  if (fissionConfig) {
+    output.fissionConfig = fissionConfig;
+  }
+  return output;
 }
 
 function validatePretrailer(input: unknown): PretrailerInput {
@@ -167,11 +260,11 @@ function validateAvatar(input: unknown): AvatarInput {
 
 function validateNative(input: unknown): NativeInput {
   if (!isRecord(input)) {
-    throw new AppError('E_INPUT_VALIDATION', '原生爆款输入格式错误');
+    throw new AppError('E_INPUT_VALIDATION', '原生输入格式错误');
   }
   const industry = input.industry;
   if (typeof industry !== 'string' || !NATIVE_INDUSTRIES.includes(industry as NativeIndustry)) {
-    throw new AppError('E_INPUT_VALIDATION', '原生爆款行业不支持');
+    throw new AppError('E_INPUT_VALIDATION', '原生行业不支持');
   }
   const brief = requireString(input.brief, '广告文案脚本');
   if (brief.length < 10 || brief.length > 2000) {

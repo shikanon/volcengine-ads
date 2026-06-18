@@ -1,4 +1,12 @@
-import type { AdVideoScoringCategory, NativeIndustry, TaskType } from './types.js';
+import type {
+  AdVideoScoringCategory,
+  ExplosionFissionConfig,
+  ExplosionFissionMode,
+  FissionIndustry,
+  FissionSlotKey,
+  NativeIndustry,
+  TaskType,
+} from './types.js';
 
 export const WORKFLOW_PROMPT_TEMPLATE_VERSION = '2026-06-09-video-scoring-v1';
 
@@ -61,6 +69,453 @@ export const NATIVE_INDUSTRY_DEFINITIONS: Record<NativeIndustry, NativeIndustryD
     complianceFocus: '价格真实性、促销规则、功效承诺、品牌授权',
   },
 };
+
+export type FissionSlotAssetKind = 'video' | 'audio';
+
+export interface FissionSlotDefinition {
+  key: FissionSlotKey;
+  label: string;
+  description: string;
+  assetKind: FissionSlotAssetKind;
+  required: boolean;
+}
+
+export interface FissionModeDefinition {
+  industry: FissionIndustry;
+  mode: ExplosionFissionMode;
+  title: string;
+  description: string;
+  formula: string;
+  slots: FissionSlotDefinition[];
+}
+
+export interface FissionCombinationFactor {
+  slotKey: FissionSlotKey;
+  label: string;
+  count: number;
+}
+
+export interface FissionCombinationEstimate {
+  factors: FissionCombinationFactor[];
+  total: number;
+  formula: string;
+  sampleCount: number;
+}
+
+export interface FissionValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+export interface FissionSampledSlot {
+  slotKey: FissionSlotKey;
+  label: string;
+  assetPath: string;
+  assetIndex: number;
+}
+
+export interface FissionSampledCombination {
+  index: number;
+  combinationIndex: number;
+  slots: FissionSampledSlot[];
+}
+
+export const FISSION_INDUSTRY_OPTIONS: readonly FissionIndustry[] = ['ecommerce', 'short_drama'];
+
+export const FISSION_SLOT_DEFINITIONS: Record<FissionSlotKey, FissionSlotDefinition> = {
+  pain_pretrailer: {
+    key: 'pain_pretrailer',
+    label: '3秒痛点前贴',
+    description: '开场 3 秒放大用户痛点或强钩子。',
+    assetKind: 'video',
+    required: true,
+  },
+  product_highlight: {
+    key: 'product_highlight',
+    label: '产品高光',
+    description: '展示商品核心卖点、使用效果或关键证明的高光片段。',
+    assetKind: 'video',
+    required: true,
+  },
+  benefit_ending: {
+    key: 'benefit_ending',
+    label: '利益点结尾',
+    description: '承接商品高光后的权益、促销或转化收口。',
+    assetKind: 'video',
+    required: true,
+  },
+  benefit_point: {
+    key: 'benefit_point',
+    label: '利益点',
+    description: '可替换的优惠、权益、功效或卖点表达。',
+    assetKind: 'video',
+    required: true,
+  },
+  action_guidance: {
+    key: 'action_guidance',
+    label: '行动引导',
+    description: '引导点击、下单、领取权益或继续观看的 CTA 片段。',
+    assetKind: 'video',
+    required: true,
+  },
+  digital_human: {
+    key: 'digital_human',
+    label: 'AI数字人口播',
+    description: '实拍数字人口播或可合成的口播片段。',
+    assetKind: 'video',
+    required: true,
+  },
+  realshot_ambience: {
+    key: 'realshot_ambience',
+    label: '实拍空镜',
+    description: '承接口播的真实环境、使用场景或氛围空镜。',
+    assetKind: 'video',
+    required: true,
+  },
+  product_close_up: {
+    key: 'product_close_up',
+    label: '产品特写',
+    description: '商品包装、质地、细节或使用状态特写。',
+    assetKind: 'video',
+    required: true,
+  },
+  fixed_intro: {
+    key: 'fixed_intro',
+    label: '固定开头',
+    description: '顺序混剪中保持不变的开场片段。',
+    assetKind: 'video',
+    required: true,
+  },
+  remix_clip: {
+    key: 'remix_clip',
+    label: '中段混剪',
+    description: '顺序混剪中可打乱或替换的中间片段。',
+    assetKind: 'video',
+    required: true,
+  },
+  fixed_outro: {
+    key: 'fixed_outro',
+    label: '固定结尾',
+    description: '顺序混剪中保持不变的收口片段。',
+    assetKind: 'video',
+    required: true,
+  },
+  highlight_1: {
+    key: 'highlight_1',
+    label: '高光1',
+    description: '短剧第一段剧情冲突或爽点高光。',
+    assetKind: 'video',
+    required: true,
+  },
+  highlight_2: {
+    key: 'highlight_2',
+    label: '高光2',
+    description: '短剧第二段剧情推进或反转高光。',
+    assetKind: 'video',
+    required: true,
+  },
+  highlight_3: {
+    key: 'highlight_3',
+    label: '高光3',
+    description: '短剧第三段情绪峰值或悬念高光。',
+    assetKind: 'video',
+    required: true,
+  },
+  pretrailer: {
+    key: 'pretrailer',
+    label: '3秒前贴',
+    description: '短剧正片前的 3 秒前贴钩子。',
+    assetKind: 'video',
+    required: true,
+  },
+  commentary: {
+    key: 'commentary',
+    label: '解说',
+    description: '解说二创中的解说口播或带解说视频片段。',
+    assetKind: 'video',
+    required: true,
+  },
+  original_highlight: {
+    key: 'original_highlight',
+    label: '原片高光',
+    description: '解说二创复用的原片剧情高光。',
+    assetKind: 'video',
+    required: true,
+  },
+  beat_clip_1: {
+    key: 'beat_clip_1',
+    label: '卡点1',
+    description: '卡点混剪第一段节奏素材。',
+    assetKind: 'video',
+    required: true,
+  },
+  beat_clip_2: {
+    key: 'beat_clip_2',
+    label: '卡点2',
+    description: '卡点混剪第二段节奏素材。',
+    assetKind: 'video',
+    required: true,
+  },
+  beat_clip_3: {
+    key: 'beat_clip_3',
+    label: '卡点3',
+    description: '卡点混剪第三段节奏素材。',
+    assetKind: 'video',
+    required: true,
+  },
+  bgm: {
+    key: 'bgm',
+    label: 'BGM',
+    description: '用于拼接或混合的背景音乐。',
+    assetKind: 'audio',
+    required: true,
+  },
+};
+
+export const FISSION_SLOT_KEYS = Object.keys(FISSION_SLOT_DEFINITIONS) as FissionSlotKey[];
+
+function defineFissionMode(
+  industry: FissionIndustry,
+  mode: ExplosionFissionMode,
+  title: string,
+  description: string,
+  slotKeys: FissionSlotKey[],
+): FissionModeDefinition {
+  const slots = slotKeys.map((slotKey) => FISSION_SLOT_DEFINITIONS[slotKey]);
+  return {
+    industry,
+    mode,
+    title,
+    description,
+    formula: slots.map((slot) => slot.label).join(' + '),
+    slots,
+  };
+}
+
+export const FISSION_MODE_DEFINITIONS: Record<ExplosionFissionMode, FissionModeDefinition> = {
+  pain_pretrailer: defineFissionMode(
+    'ecommerce',
+    'pain_pretrailer',
+    '痛点前贴裂变',
+    '3秒痛点前贴 + 产品高光 + 利益点结尾 + BGM',
+    ['pain_pretrailer', 'product_highlight', 'benefit_ending', 'bgm'],
+  ),
+  benefit_point: defineFissionMode(
+    'ecommerce',
+    'benefit_point',
+    '利益点裂变',
+    '产品高光 + 利益点A/B/C + 行动引导 + BGM',
+    ['product_highlight', 'benefit_point', 'action_guidance', 'bgm'],
+  ),
+  realshot_digital_human: defineFissionMode(
+    'ecommerce',
+    'realshot_digital_human',
+    '实拍数字人裂变',
+    'AI数字人口播 + 实拍空镜 + 产品特写 + BGM',
+    ['digital_human', 'realshot_ambience', 'product_close_up', 'bgm'],
+  ),
+  sequence_remix: defineFissionMode(
+    'ecommerce',
+    'sequence_remix',
+    '顺序混剪裂变',
+    '固定首尾 + 中间打乱 + BGM',
+    ['fixed_intro', 'remix_clip', 'fixed_outro', 'bgm'],
+  ),
+  trend_remix: defineFissionMode(
+    'short_drama',
+    'trend_remix',
+    '顺势二创',
+    '高光1 + 高光2 + 高光3',
+    ['highlight_1', 'highlight_2', 'highlight_3'],
+  ),
+  pretrailer_remix: defineFissionMode(
+    'short_drama',
+    'pretrailer_remix',
+    '前贴二创',
+    '3秒前贴 + 高光1 + 高光2 + BGM',
+    ['pretrailer', 'highlight_1', 'highlight_2', 'bgm'],
+  ),
+  commentary_remix: defineFissionMode(
+    'short_drama',
+    'commentary_remix',
+    '解说二创',
+    '解说 + 原片高光 + BGM',
+    ['commentary', 'original_highlight', 'bgm'],
+  ),
+  beat_cut: defineFissionMode(
+    'short_drama',
+    'beat_cut',
+    '卡点混剪',
+    '卡点1 + 卡点2 + 卡点3 + BGM',
+    ['beat_clip_1', 'beat_clip_2', 'beat_clip_3', 'bgm'],
+  ),
+};
+
+export const FISSION_MODE_OPTIONS: Record<FissionIndustry, FissionModeDefinition[]> = {
+  ecommerce: [
+    FISSION_MODE_DEFINITIONS.pain_pretrailer,
+    FISSION_MODE_DEFINITIONS.benefit_point,
+    FISSION_MODE_DEFINITIONS.realshot_digital_human,
+    FISSION_MODE_DEFINITIONS.sequence_remix,
+  ],
+  short_drama: [
+    FISSION_MODE_DEFINITIONS.trend_remix,
+    FISSION_MODE_DEFINITIONS.pretrailer_remix,
+    FISSION_MODE_DEFINITIONS.commentary_remix,
+    FISSION_MODE_DEFINITIONS.beat_cut,
+  ],
+};
+
+export const FISSION_MODE_VALUES = Object.keys(
+  FISSION_MODE_DEFINITIONS,
+) as ExplosionFissionMode[];
+
+export function getFissionModeDefinition(
+  industry: FissionIndustry,
+  mode: ExplosionFissionMode,
+): FissionModeDefinition | undefined {
+  const definition = FISSION_MODE_DEFINITIONS[mode];
+  return definition.industry === industry ? definition : undefined;
+}
+
+function toSafeCount(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.trunc(value));
+}
+
+function toSafeVariantCount(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.trunc(value));
+}
+
+function normalizeAssetPaths(paths: string[]): string[] {
+  return paths.map((path) => path.trim()).filter((path) => path.length > 0);
+}
+
+export function getFissionSlotAssetPaths(
+  config: ExplosionFissionConfig,
+  slotKey: FissionSlotKey,
+): string[] {
+  const slotPaths = normalizeAssetPaths(config.slotAssetPaths?.[slotKey] ?? []);
+  if (slotKey === 'bgm') {
+    return [...slotPaths, ...normalizeAssetPaths(config.bgmPaths ?? [])];
+  }
+  return slotPaths;
+}
+
+export function getFissionSlotAssetCounts(
+  config: ExplosionFissionConfig,
+): Partial<Record<FissionSlotKey, number>> {
+  const definition = getFissionModeDefinition(config.industry, config.mode);
+  if (!definition) {
+    return {};
+  }
+  return Object.fromEntries(
+    definition.slots.map((slot) => [slot.key, getFissionSlotAssetPaths(config, slot.key).length]),
+  ) as Partial<Record<FissionSlotKey, number>>;
+}
+
+export function estimateFissionCombinations(
+  industry: FissionIndustry,
+  mode: ExplosionFissionMode,
+  slotCounts: Partial<Record<FissionSlotKey, number>>,
+  variantCount = Number.MAX_SAFE_INTEGER,
+): FissionCombinationEstimate {
+  const definition = getFissionModeDefinition(industry, mode);
+  if (!definition) {
+    return { factors: [], total: 0, formula: '0 = 0', sampleCount: 0 };
+  }
+  const factors = definition.slots.map((slot) => ({
+    slotKey: slot.key,
+    label: slot.label,
+    count: toSafeCount(slotCounts[slot.key]),
+  }));
+  const total = factors.reduce((current, factor) => current * factor.count, 1);
+  const sampleCount = Math.min(toSafeVariantCount(variantCount), total);
+  const formula = `${factors.map((factor) => String(factor.count)).join(' × ')} = ${total}`;
+  return { factors, total, formula, sampleCount };
+}
+
+export function validateFissionCombinationInputs(
+  config: ExplosionFissionConfig,
+  variantCount: number,
+): FissionValidationResult {
+  const definition = getFissionModeDefinition(config.industry, config.mode);
+  if (!definition) {
+    return { valid: false, errors: ['行业裂变模式与所选行业不匹配'] };
+  }
+  const errors: string[] = [];
+  for (const slot of definition.slots) {
+    if (slot.required && getFissionSlotAssetPaths(config, slot.key).length === 0) {
+      errors.push(`缺少必填槽位素材：${slot.label}`);
+    }
+  }
+  const estimate = estimateFissionCombinations(
+    config.industry,
+    config.mode,
+    getFissionSlotAssetCounts(config),
+    variantCount,
+  );
+  if (estimate.total > 0 && estimate.sampleCount === 0) {
+    errors.push('裂变生成数量必须至少为 1');
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+function decodeCombinationIndex(index: number, counts: number[]): number[] {
+  let remaining = index;
+  return counts.map((count) => {
+    const assetIndex = remaining % count;
+    remaining = Math.floor(remaining / count);
+    return assetIndex;
+  });
+}
+
+export function sampleFissionCombinations(
+  config: ExplosionFissionConfig,
+  variantCount: number,
+): FissionSampledCombination[] {
+  const definition = getFissionModeDefinition(config.industry, config.mode);
+  if (!definition) {
+    return [];
+  }
+  const validation = validateFissionCombinationInputs(config, variantCount);
+  if (!validation.valid) {
+    return [];
+  }
+  const assetsBySlot = definition.slots.map((slot) => ({
+    slot,
+    paths: getFissionSlotAssetPaths(config, slot.key),
+  }));
+  const counts = assetsBySlot.map((entry) => entry.paths.length);
+  const estimate = estimateFissionCombinations(
+    config.industry,
+    config.mode,
+    getFissionSlotAssetCounts(config),
+    variantCount,
+  );
+  if (estimate.sampleCount === 0) {
+    return [];
+  }
+  return Array.from({ length: estimate.sampleCount }, (_, index) => {
+    const combinationIndex = Math.floor((index * estimate.total) / estimate.sampleCount);
+    const assetIndexes = decodeCombinationIndex(combinationIndex, counts);
+    const slots = assetsBySlot.map((entry, slotIndex) => {
+      const assetIndex = assetIndexes[slotIndex] ?? 0;
+      return {
+        slotKey: entry.slot.key,
+        label: entry.slot.label,
+        assetPath: entry.paths[assetIndex] ?? '',
+        assetIndex,
+      };
+    });
+    return { index: index + 1, combinationIndex, slots };
+  });
+}
 
 export const VIDEO_COMPOSITION_PROMPT =
   '构图层面：包含构图形式、空间层次、视觉秩序、视觉重心、疏密虚实对比、视线引导与叙事氛围。';
@@ -408,7 +863,7 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
   },
   native: {
     type: 'native',
-    title: '原生爆款广告素材生成',
+    title: '原生广告素材生成',
     description: '按游戏、短剧、小说、社交、工具、电商六类行业工作流生成投放素材。',
     nodes: [
       { id: 'industry_router', title: '行业路由', description: '加载行业策略、时长、必备模块和合规硬规则。', artifact: 'industry.json', promptIds: [] },

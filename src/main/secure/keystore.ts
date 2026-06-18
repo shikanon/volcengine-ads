@@ -198,6 +198,11 @@ export class SettingsService {
       llmConfigured: Boolean(llmApiKey),
       ttsConfigured: Boolean(ttsApiKey || (ttsAppId && ttsToken)),
       asrConfigured: Boolean(asrApiKey || (asrAppId && asrToken)),
+      douyinAutoReadChromeCookies: getJson<boolean>(
+        this.repository,
+        'douyinAutoReadChromeCookies',
+        true,
+      ),
       concurrency: getJson<number>(this.repository, 'concurrency', 1),
       defaultPretrailerStyle: normalizePretrailerStyle(
         getJson(this.repository, 'defaultPretrailerStyle', DEFAULT_PRETRAILER_VIDEO_TYPE),
