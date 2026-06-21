@@ -219,11 +219,13 @@ class MemoryTaskRepository implements TaskRepository {
 class NativeMockModelClient implements ModelClient {
   private chatIndex = 0;
   readonly videoRequests: SeedanceVideoRequest[] = [];
-  private readonly failedVideoIndexes = new Set<number>();
+  private readonly failedVideoIndexes = new Set<number | string>();
 
   constructor(
     private readonly failVideoOnceForIndexes: number[] = [],
     private readonly visionVideoResponse = JSON.stringify({ pass: true, issues: [], score: 0.92 }),
+    private readonly failVideoOnceForOutputPathIncludes: string[] = [],
+    private readonly onVideoRequest?: (req: SeedanceVideoRequest) => Promise<void> | void,
   ) {}
 
   async generateImage(): Promise<ImageResult> {
@@ -232,6 +234,7 @@ class NativeMockModelClient implements ModelClient {
 
   async generateVideo(req: SeedanceVideoRequest): Promise<VideoResult> {
     this.videoRequests.push(req);
+    await this.onVideoRequest?.(req);
     const match = /asset_variant_(\d+)\.mp4/u.exec(req.outputPath);
     const index = match ? Number(match[1]) : undefined;
     if (
@@ -241,6 +244,16 @@ class NativeMockModelClient implements ModelClient {
     ) {
       this.failedVideoIndexes.add(index);
       throw new Error(`Seedance task failed for variant ${index}: InvalidParameter detail`);
+    }
+    const outputPathFailureKey = this.failVideoOnceForOutputPathIncludes.find((item) =>
+      req.outputPath.includes(item),
+    );
+    if (
+      outputPathFailureKey !== undefined &&
+      !this.failedVideoIndexes.has(req.outputPath)
+    ) {
+      this.failedVideoIndexes.add(req.outputPath);
+      throw new Error(`Seedance task failed for ${outputPathFailureKey}: InvalidParameter detail`);
     }
     await mkdir(dirname(req.outputPath), { recursive: true });
     await writeFile(req.outputPath, 'video', 'utf8');
@@ -842,6 +855,138 @@ describe('nativePipeline', () => {
         status: 'success',
         durationSec: 10,
         path: join(artifactDir, 'asset_variant_1_part_2.mp4'),
+      }),
+    ]);
+  });
+
+  it('records ecommerce segment progress without counting it as final failure', async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), 'native-assets-'));
+    const input = {
+      industry: 'ecommerce' as const,
+      brief: '生成 25 秒轻量机能背包电商广告素材',
+      productName: '轻量机能背包',
+      variantCount: 1,
+      durationSec: 25,
+      ratio: '9:16' as const,
+    };
+    const task: TaskRecord = {
+      id: 'task-native',
+      type: 'native',
+      status: 'running',
+      progress: 0,
+      input,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      steps: [],
+    };
+    await writeFile(
+      join(artifactDir, 'industry.json'),
+      JSON.stringify({
+        industry: 'ecommerce',
+        title: '电商',
+        formula: '场景痛点 + 商品卖点 + 证据背书 + 权益刺激 + CTA',
+        durationRange: '15-30s',
+        requiredModules: ['商品特写', '使用场景', '卖点对比', '促销权益'],
+        complianceFocus: '价格真实性、促销规则、功效承诺、品牌授权',
+        hardRules: { blacklistWords: [], forbiddenScenes: [] },
+      }),
+      'utf8',
+    );
+    await writeFile(
+      join(artifactDir, 'storyboard.json'),
+      JSON.stringify({
+        variants: [
+          {
+            index: 1,
+            title: '轻量机能背包电商广告',
+            script: '先展示普通背包压肩痛点，再展示轻量机能背包分区收纳和限时权益。',
+            shots: [
+              {
+                index: 1,
+                durationSec: 15,
+                imagePrompt: '通勤人群背着沉重背包走进地铁',
+                videoPrompt: '镜头展示肩带勒肩、物品杂乱和通勤疲惫感',
+              },
+              {
+                index: 2,
+                durationSec: 10,
+                imagePrompt: '轻量机能背包商品特写和收纳展示',
+                videoPrompt: '镜头展示电脑、水杯和运动装备有序装入，结尾出现促销权益口播',
+              },
+            ],
+          },
+        ],
+      }),
+      'utf8',
+    );
+
+    const step = nativePipeline.steps.find((item) => item.name === 'asset_generator');
+    if (step === undefined) {
+      throw new Error('asset_generator step missing');
+    }
+
+    let progressReport:
+      | {
+          assets: Array<{ index: number; status?: string; phase?: string; error?: string }>;
+          summary: { success: number; failed: number; skipped: number };
+        }
+      | undefined;
+    const modelClient = new NativeMockModelClient(
+      [],
+      JSON.stringify({ pass: true, issues: [], score: 0.92 }),
+      ['asset_variant_1_part_2.mp4'],
+      async (request) => {
+        if (request.outputPath.endsWith('asset_variant_1_part_2.mp4')) {
+          progressReport = JSON.parse(
+            await readFile(join(artifactDir, 'assets.json'), 'utf8'),
+          ) as typeof progressReport;
+        }
+      },
+    );
+
+    await expect(
+      step.runStep({
+        task,
+        input,
+        artifactDir,
+        repository: {} as TaskRepository,
+        modelClient,
+        workflowPrompts: {},
+        emitProgress: () => undefined,
+      }),
+    ).rejects.toThrow(/素材生成部分失败/u);
+
+    expect(progressReport?.summary).toMatchObject({ success: 0, failed: 0, skipped: 0 });
+    expect(progressReport?.assets[0]).toMatchObject({
+      index: 1,
+      phase: 'generating_segments',
+      error: '第 1/2 段已生成，等待剩余片段',
+    });
+    expect(progressReport?.assets[0]?.status).toBeUndefined();
+
+    const finalReport = JSON.parse(await readFile(join(artifactDir, 'assets.json'), 'utf8')) as {
+      assets: Array<{
+        index: number;
+        status?: string;
+        phase?: string;
+        error?: string;
+        segments: Array<{ index: number; status: string; error?: string }>;
+      }>;
+      summary: { success: number; failed: number; skipped: number };
+    };
+    expect(finalReport.summary).toMatchObject({ success: 0, failed: 1, skipped: 0 });
+    expect(finalReport.assets[0]).toMatchObject({
+      index: 1,
+      status: 'failed',
+      phase: 'failed',
+      error: expect.stringContaining('第 2/2 段生成失败'),
+    });
+    expect(finalReport.assets[0]?.segments).toEqual([
+      expect.objectContaining({ index: 1, status: 'success' }),
+      expect.objectContaining({
+        index: 2,
+        status: 'failed',
+        error: expect.stringContaining('InvalidParameter detail'),
       }),
     ]);
   });

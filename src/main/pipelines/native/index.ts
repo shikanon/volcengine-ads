@@ -97,10 +97,14 @@ interface StoryboardBundle {
   variants: StoryboardVariant[];
 }
 
+type NativeAssetStatus = 'success' | 'failed';
+type NativeAssetPhase = 'generating_segments' | 'composing' | 'completed' | 'failed';
+
 interface NativeAsset {
   index: number;
   title: string;
-  status?: 'success' | 'failed';
+  status?: NativeAssetStatus;
+  phase?: NativeAssetPhase;
   videoPath: string;
   audioPath?: string;
   error?: string;
@@ -794,7 +798,8 @@ function buildVariantPlan(
 
 function buildNativeAssetSnapshot(params: {
   plan: NativeVariantPlan;
-  status: 'success' | 'failed';
+  status?: NativeAssetStatus;
+  phase?: NativeAssetPhase;
   videoPath: string;
   segments: NativeAssetSegment[];
   references: NativeAssetReferences;
@@ -803,10 +808,14 @@ function buildNativeAssetSnapshot(params: {
   completedAt?: number;
   failedAt?: number;
 }): NativeAsset {
+  const phase =
+    params.phase ??
+    (params.status === 'success' ? 'completed' : params.status === 'failed' ? 'failed' : undefined);
   return {
     index: params.plan.variant.index,
     title: params.plan.variant.title,
-    status: params.status,
+    ...(params.status !== undefined ? { status: params.status } : {}),
+    ...(phase !== undefined ? { phase } : {}),
     videoPath: params.videoPath,
     ...(params.audioPath !== undefined ? { audioPath: params.audioPath } : {}),
     ...(params.error !== undefined ? { error: params.error } : {}),
@@ -1186,7 +1195,7 @@ async function generateNativeVariantSegments(params: {
     await store.record(
       buildNativeAssetSnapshot({
         plan,
-        status: 'failed',
+        phase: 'generating_segments',
         videoPath: plan.generatedVideoPath,
         error: `第 ${segment.index}/${plan.segments.length} 段已生成，等待剩余片段`,
         segments: generatedSegments,
