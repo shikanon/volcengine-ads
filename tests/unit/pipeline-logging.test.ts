@@ -124,4 +124,85 @@ describe('pipeline logging', () => {
       }),
     );
   });
+
+  it('uses step canResume to skip completed steps without a single artifact path', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'pipeline-resume-contract-'));
+    const repository = new SqliteTaskRepository(join(userDataPath, 'app.db'));
+    const runStep = vi.fn(async () => ({ logs: '复合产物已就绪' }));
+    const canResume = vi.fn(() => true);
+    const pipeline: PipelineDefinition<ExplosionInput> = {
+      type: 'explosion',
+      steps: [{ name: 'compound_step', canResume, runStep }],
+    };
+    const task = repository.createTask({
+      request: {
+        type: 'explosion',
+        input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 1 },
+      },
+      stepNames: pipeline.steps.map((step) => step.name),
+    });
+
+    await runPipeline({
+      task,
+      pipeline,
+      repository,
+      modelClient: {} as ModelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    });
+    await runPipeline({
+      task,
+      pipeline,
+      repository,
+      modelClient: {} as ModelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    });
+
+    expect(runStep).toHaveBeenCalledTimes(1);
+    expect(canResume).toHaveBeenCalledTimes(1);
+    const logFilePath = join(userDataPath, 'artifacts', task.id, 'pipeline.log');
+    await expect(readFile(logFilePath, 'utf8')).resolves.toContain('节点已完成，续跑时跳过');
+  });
+
+  it('reruns a completed step when the default artifact path is missing', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'pipeline-missing-artifact-'));
+    const repository = new SqliteTaskRepository(join(userDataPath, 'app.db'));
+    const missingArtifactPath = join(userDataPath, 'artifacts', 'missing.json');
+    const runStep = vi.fn(async () => ({ artifactPath: missingArtifactPath }));
+    const pipeline: PipelineDefinition<ExplosionInput> = {
+      type: 'explosion',
+      steps: [{ name: 'single_artifact_step', runStep }],
+    };
+    const task = repository.createTask({
+      request: {
+        type: 'explosion',
+        input: { douyinUrl: 'https://v.douyin.com/demo', variantCount: 1 },
+      },
+      stepNames: pipeline.steps.map((step) => step.name),
+    });
+
+    await runPipeline({
+      task,
+      pipeline,
+      repository,
+      modelClient: {} as ModelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    });
+    await runPipeline({
+      task,
+      pipeline,
+      repository,
+      modelClient: {} as ModelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    });
+
+    expect(runStep).toHaveBeenCalledTimes(2);
+  });
 });

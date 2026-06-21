@@ -10,6 +10,7 @@ import type {
   VideoScoringInput,
   TaskProgressEvent,
   TaskRecord,
+  TaskStep,
   TaskType,
 } from '../../shared/types.js';
 import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
@@ -45,6 +46,7 @@ export interface StepContext<TInput = PipelineInput> {
 
 export interface PipelineStep<TInput = PipelineInput> {
   name: string;
+  canResume?(ctx: StepContext<TInput>, step: TaskStep): boolean | Promise<boolean>;
   runStep(ctx: StepContext<TInput>): Promise<StepResult>;
 }
 

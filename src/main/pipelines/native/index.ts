@@ -7,6 +7,7 @@ import { AppError, toAppError } from '../../errors.js';
 import { concatSilentVideos, concatVideos, muxAudioVideo, trimVideo } from '../../media/ffmpeg.js';
 import type { SeedanceVideoRequest } from '../../model-client/index.js';
 import { DEFAULT_VIDEO_RESOLUTION, type NativeIndustry, type NativeInput } from '../../../shared/types.js';
+import type { TaskStep } from '../../../shared/types.js';
 import { NATIVE_INDUSTRY_DEFINITIONS } from '../../../shared/workflows.js';
 import { errorTypeLabel } from '../task-log.js';
 import {
@@ -498,6 +499,23 @@ async function readNativeAssetsIfExists(path: string): Promise<NativeAssets | un
     return undefined;
   }
   return readJson<NativeAssets>(path);
+}
+
+async function canResumeAssetGenerator(
+  ctx: StepContext<NativeInput>,
+  step: TaskStep,
+): Promise<boolean> {
+  const assetsPath = step.artifactPath ?? artifactPath(ctx.artifactDir, 'assets.json');
+  const previousAssets = await readNativeAssetsIfExists(assetsPath);
+  if (previousAssets === undefined) {
+    return false;
+  }
+  const expectedTotal = previousAssets.summary?.total ?? ctx.input.variantCount;
+  return (
+    expectedTotal > 0 &&
+    previousAssets.assets.length >= expectedTotal &&
+    previousAssets.assets.every((asset) => isReusableNativeAsset(asset))
+  );
 }
 
 async function runIndustryRouter(ctx: StepContext<NativeInput>) {
@@ -1604,7 +1622,7 @@ export const nativePipeline: PipelineDefinition<NativeInput> = {
     { name: 'storyboard_builder', runStep: runStoryboardBuilder },
     { name: 'compliance_pre', runStep: runCompliancePre },
     { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
-    { name: 'asset_generator', runStep: runAssetGenerator },
+    { name: 'asset_generator', canResume: canResumeAssetGenerator, runStep: runAssetGenerator },
     { name: 'consistency_checker', runStep: runConsistencyChecker },
     { name: 'composer', runStep: runComposer },
   ],

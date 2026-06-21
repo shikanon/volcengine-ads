@@ -7,10 +7,10 @@ import log from 'electron-log/main.js';
 import { toAppError } from '../errors.js';
 import type { ModelClient } from '../model-client/index.js';
 import type { TaskRepository } from '../db/index.js';
-import type { TaskProgressEvent, TaskRecord } from '../../shared/types.js';
+import type { TaskProgressEvent, TaskRecord, TaskStep } from '../../shared/types.js';
 import type { WorkflowPromptOverrides } from '../../shared/workflows.js';
 import { runCodexDiagnosisOnce } from './codex-diagnosis.js';
-import type { PipelineDefinition, StepContext } from './types.js';
+import type { PipelineDefinition, PipelineStep, StepContext } from './types.js';
 import {
   appendPipelineLog,
   errorToLogFields,
@@ -35,6 +35,20 @@ function emitCanceled(repository: TaskRepository, taskId: string, emitProgress: 
     progress: task.progress,
     message: task.error ?? '任务已取消',
   });
+}
+
+async function shouldReuseStep(
+  ctx: StepContext,
+  step: PipelineStep,
+  existing: TaskStep | undefined,
+): Promise<boolean> {
+  if (existing?.status !== 'success') {
+    return false;
+  }
+  if (step.canResume !== undefined) {
+    return step.canResume(ctx, existing);
+  }
+  return existing.artifactPath !== undefined && existsSync(existing.artifactPath);
 }
 
 export async function runPipeline(params: {
@@ -67,46 +81,50 @@ export async function runPipeline(params: {
       return;
     }
     const existing = repository.getTask(task.id)?.steps.find((item) => item.step === step.name);
-    if (existing?.status === 'success' && existing.artifactPath && existsSync(existing.artifactPath)) {
-      continue;
-    }
     const progress = Math.floor((index / total) * 100);
-    repository.updateStepRunning(task.id, step.name);
-    repository.updateTaskProgress(task.id, progress);
-    emitProgress({ taskId: task.id, status: 'running', progress, step: step.name });
-    await appendPipelineLog(logFilePath, {
-      taskId: task.id,
-      step: step.name,
-      level: 'info',
-      message: '节点开始执行',
-      data: { progress },
-    });
+    const appendLog = async (
+      level: PipelineLogLevel,
+      message: string,
+      data?: Record<string, unknown>,
+    ): Promise<void> => {
+      await appendPipelineLog(logFilePath, {
+        taskId: task.id,
+        step: step.name,
+        level,
+        message,
+        ...(data !== undefined ? { data } : {}),
+      });
+    };
+    const ctx: StepContext = {
+      task,
+      input: task.input,
+      artifactDir,
+      logFilePath,
+      repository,
+      modelClient,
+      workflowPrompts,
+      emitProgress,
+      appendLog,
+    };
 
     try {
-      const appendLog = async (
-        level: PipelineLogLevel,
-        message: string,
-        data?: Record<string, unknown>,
-      ): Promise<void> => {
-        await appendPipelineLog(logFilePath, {
-          taskId: task.id,
-          step: step.name,
-          level,
-          message,
-          ...(data !== undefined ? { data } : {}),
+      if (await shouldReuseStep(ctx, step, existing)) {
+        await appendLog('info', '节点已完成，续跑时跳过', {
+          ...(existing?.artifactPath !== undefined ? { artifactPath: existing.artifactPath } : {}),
         });
-      };
-      const ctx: StepContext = {
-        task,
-        input: task.input,
-        artifactDir,
-        logFilePath,
-        repository,
-        modelClient,
-        workflowPrompts,
-        emitProgress,
-        appendLog,
-      };
+        continue;
+      }
+      repository.updateStepRunning(task.id, step.name);
+      repository.updateTaskProgress(task.id, progress);
+      emitProgress({ taskId: task.id, status: 'running', progress, step: step.name });
+      await appendPipelineLog(logFilePath, {
+        taskId: task.id,
+        step: step.name,
+        level: 'info',
+        message: '节点开始执行',
+        data: { progress },
+      });
+
       const result = await step.runStep(ctx);
       if (isCanceled(repository, task.id)) {
         emitCanceled(repository, task.id, emitProgress);

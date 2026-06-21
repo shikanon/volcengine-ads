@@ -11,6 +11,7 @@ import {
   normalizeSeedanceGenerationDuration,
   parseModelJson,
   readJson,
+  resumeByFiles,
   splitDurationForSeedanceGeneration,
   waitForScriptConfirmation,
   workflowPrompt,
@@ -397,14 +398,15 @@ async function runSeedanceAvatar(ctx: StepContext<AvatarInput>) {
       logs: `已生成 ${videoSegments.length} 段并拼接；最大唇形同步偏差 ${maxLipSyncOffset}ms，已记录告警`,
     };
   }
+  const avatarPath = artifactPath(ctx.artifactDir, 'avatar.mp4');
+  if (videoSegments.length === 1) {
+    return { artifactPath: avatarPath };
+  }
   return {
-    artifactPath: artifactPath(ctx.artifactDir, 'avatar.mp4'),
-    logs:
-      videoSegments.length > 1
-        ? `已生成 ${videoSegments.length} 段并拼接，单段时长 ${videoSegments
-            .map((segment) => `${segment.durationSec}s`)
-            .join(' + ')}`
-        : undefined,
+    artifactPath: avatarPath,
+    logs: `已生成 ${videoSegments.length} 段并拼接，单段时长 ${videoSegments
+      .map((segment) => `${segment.durationSec}s`)
+      .join(' + ')}`,
   };
 }
 
@@ -439,7 +441,7 @@ export const avatarPipeline: PipelineDefinition<AvatarInput> = {
     { name: 'script_confirm', runStep: runScriptConfirm },
     { name: 'tts', runStep: runTts },
     { name: 'video_prompt_optimize', runStep: runVideoPromptOptimize },
-    { name: 'seedance_avatar', runStep: runSeedanceAvatar },
+    { name: 'seedance_avatar', canResume: resumeByFiles(['avatar.mp4']), runStep: runSeedanceAvatar },
     { name: 'overlay', runStep: runOverlay },
     { name: 'postprocess', runStep: runPostprocess },
   ],

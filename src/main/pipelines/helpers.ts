@@ -1,10 +1,12 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { AppError } from '../errors.js';
 import { renderWorkflowPrompt } from '../../shared/workflows.js';
 import type { WorkflowPromptId } from '../../shared/workflows.js';
-import type { StepContext, StepResult } from './types.js';
+import type { PipelineInput, StepContext, StepResult } from './types.js';
+import type { TaskStep } from '../../shared/types.js';
 
 export async function writeJson(path: string, value: unknown): Promise<string> {
   await mkdir(dirname(path), { recursive: true });
@@ -24,6 +26,16 @@ export async function readJson<T>(path: string): Promise<T> {
 
 export function artifactPath(artifactDir: string, name: string): string {
   return join(artifactDir, name);
+}
+
+export function resumeByFiles<TInput = PipelineInput>(
+  artifactNames: string[],
+): (ctx: StepContext<TInput>, step: TaskStep) => boolean {
+  return (ctx, step) => {
+    const paths = artifactNames.length > 0 ? artifactNames.map((name) => artifactPath(ctx.artifactDir, name)) : [];
+    const artifactPaths = step.artifactPath === undefined ? paths : [step.artifactPath, ...paths];
+    return artifactPaths.length > 0 && artifactPaths.every((path) => existsSync(path));
+  };
 }
 
 export const SEEDANCE_MIN_GENERATION_DURATION_SEC = 4;
