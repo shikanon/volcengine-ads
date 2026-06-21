@@ -51,8 +51,14 @@ describe('pipeline logging', () => {
     const logFilePath = join(userDataPath, 'artifacts', task.id, 'pipeline.log');
     const failed = repository.getTask(task.id);
     expect(failed?.status).toBe('paused');
+    expect(failed?.error).toContain('任务执行失败：输入参数不合法：视频时长超过模型单次限制');
+    expect(failed?.error).toContain('可能原因：输入素材或参数不符合当前工作流要求。');
+    expect(failed?.error).toContain(
+      '建议处理：请检查输入链接、文件路径、时长、比例、行业类型和必填字段，修改后重新创建或重试任务。',
+    );
     expect(failed?.error).toContain('错误类型：输入参数不合法');
     expect(failed?.error).toContain(`日志文件：${logFilePath}`);
+    expect(failed?.steps[0]?.logs).toContain('建议处理：请检查输入链接');
     expect(failed?.steps[0]?.logs).toContain(`日志文件：${logFilePath}`);
 
     const lines = (await readFile(logFilePath, 'utf8')).trim().split('\n');
