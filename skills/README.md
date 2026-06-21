@@ -1,10 +1,10 @@
-# Workspace Skills
+# Customer Skills
 
-本目录用于沉淀 `volcengine-ads` 的 workspace skills。当前阶段已完成 Task 1 与 Task 2：明确 skill 清单，并为每个 skill 建立统一的 `SKILL.md` 骨架。
+本目录用于沉淀 `volcengine-ads` 的客户可见 skills。当前已完成 skill 清单整理，并为每个 skill 建立统一的 `SKILL.md` 文档。
 
 ## 统一约定
 
-- 每个 skill 位于 `.trae/skills/<skill-name>/SKILL.md`。
+- 每个 skill 位于 `skills/<skill-name>/SKILL.md`。
 - frontmatter 统一包含 `name` 与 `description`。
 - `description` 必须同时回答“做什么”和“什么时候调用”。
 - 正文统一包含：能力说明、适用时机、输入信息、执行步骤、输出结果、操作边界、引用来源、示例。

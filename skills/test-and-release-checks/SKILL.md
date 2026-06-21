@@ -98,5 +98,5 @@ PR Checklist：
 ## 示例
 
 - “改了 `native.asset_generator` 后，至少考虑 `tests/unit/native-pipeline.test.ts`、必要时的 `pipeline-contract`，再执行 `typecheck`、`lint`、`test`、`build`。”
-- “只写了 workspace skill 文档时，可以说明本次仅修改 `.trae/skills/**` 和任务清单，未改运行时代码，因此未执行 `npm run build`。”
+- “只写了 customer skill 文档时，可以说明本次仅修改 `skills/**` 和任务清单，未改运行时代码，因此未执行 `npm run build`。”
 - “改了模型入参校验时，优先跑输入校验相关单测，而不是只跑全量 build。”

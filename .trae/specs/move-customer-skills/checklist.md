@@ -1,0 +1,7 @@
+- [x] 仓库根目录存在 `skills/`。
+- [x] 原旧隐藏目录中的 `SKILL.md` 已迁移到 `skills/**/SKILL.md`。
+- [x] 迁移后的 skill 数量与迁移前一致。
+- [x] 旧隐藏目录不再保留重复 skill 文档。
+- [x] 当前项目说明中不再把客户侧 skill 主目录写成旧隐藏目录。
+- [x] `.trae/specs/add-workspace-skills/**` 历史规格文档保持不回写。
+- [x] `git status` 仅包含本次迁移相关文件变更。
