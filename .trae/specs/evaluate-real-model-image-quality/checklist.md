@@ -25,3 +25,22 @@
 - `npm run lint` 阻塞：任务外文件 `scripts/run-ecommerce-image.mjs` 存在未使用 `basename`，`src/main/model-client/local-mock.ts` 存在未使用 `opts`，`src/main/services/lark-download.ts` 存在 `import()` type annotation lint 规则错误。
 - `npm test` 阻塞：任务外 `tests/unit/lark-download.test.ts` 两个用例失败，原因是 `src/main/services/lark-download.ts` 中 `BrowserWindow is not a constructor`。
 - `npm run build` 通过。
+
+## 最终复验记录
+
+- accepted 误判逻辑已修复：只有模型明确 accepted 或仅存在非阻断信息完整度改进项，且 `textQualityPass=true`、无文字质量问题、无硬拒问题时才接受。
+- 硬拒检测已排除下一轮建议，避免把“不得添加保证收益/夸大赚钱”等建议误判为当前图片违规。
+- 硬拒检测已补充否定语义排除，避免把“无错字乱码”“无合规风险”误判为存在乱码或合规风险。
+- 最新最终报告：`tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/report.md`
+- 最新最终样张：
+- `tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/reward-atom.png`
+- `tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/big-character-poster.png`
+- `tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/ugc-reward-overlay.png`
+- 人工目检：三图均为无可读文字/图标化版本，未见明显错字、乱码、随机字符或语义不通文字；UGC 中模型生成的模糊脸不作为本次质量问题。
+- 真实模型命令：`REAL_IMAGE_ITERATION=14 npm run test:real:image-quality` 通过，三类样张均为 `accepted`。
+- 脚本语法检查：`node --check scripts/evaluate-real-model-image-quality.mjs` 通过。
+- 聚焦测试：`npx vitest run tests/unit/pipeline-contract.test.ts tests/unit/native-pipeline.test.ts` 通过，25 tests passed。
+- `npm run typecheck` 通过。
+- `npm run lint` 阻塞：任务外文件 `scripts/run-ecommerce-image.mjs` 存在未使用 `basename`，`src/main/model-client/local-mock.ts` 存在未使用 `opts`，`src/main/services/lark-download.ts` 存在 `import()` type annotation lint 规则错误。
+- `npm test` 阻塞：任务外 `tests/unit/lark-download.test.ts` 两个用例失败，原因是 `src/main/services/lark-download.ts` 中 `BrowserWindow is not a constructor`。
+- `npm run build` 通过。

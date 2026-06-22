@@ -38,6 +38,10 @@
 - 已强化 Prompt 和评价后处理：报告包含验证命令；明显错字、错别字、乱码、语义不通中文均作为硬拒绝；大字报禁止手机界面小字和功能按钮文字。
 - 验证：`node --check scripts/evaluate-real-model-image-quality.mjs` 通过；`npx vitest run tests/unit/pipeline-contract.test.ts tests/unit/native-pipeline.test.ts` 通过，25 tests passed；`npm run typecheck` 通过；`npm run build` 通过。
 - `npm run lint`、`npm test` 已执行；任务外阻塞原因见 `checklist.md` 验收记录。
+- 最终验收复修：修复 accepted 误判逻辑，避免把模型未明确接受、下一轮建议里的禁止词、以及“无错字乱码”等否定表述误判为通过/失败；最终真实模型运行更新为 `REAL_IMAGE_ITERATION=14 npm run test:real:image-quality`。
+- 最新最终报告：`tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/report.md`。
+- 最新最终样张：`tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/reward-atom.png`、`tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/big-character-poster.png`、`tmp/real-model-image-quality/2026-06-22T17-31-19-326Z-25aa7805/ugc-reward-overlay.png`。
+- 人工目检：三图均为无可读文字/图标化版本，未见明显错字、乱码、随机字符或语义不通文字；UGC 中模型生成的模糊脸不作为本次质量问题。
 
 # Task Dependencies
 - Task 2 depends on Task 1
