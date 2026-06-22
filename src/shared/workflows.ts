@@ -8,7 +8,7 @@ import type {
   TaskType,
 } from './types.js';
 
-export const WORKFLOW_PROMPT_TEMPLATE_VERSION = '2026-06-09-video-scoring-v1';
+export const WORKFLOW_PROMPT_TEMPLATE_VERSION = '2026-06-23-ecommerce-image-render-plan-v1';
 
 export interface NativeIndustryDefinition {
   id: NativeIndustry;
@@ -18,6 +18,9 @@ export interface NativeIndustryDefinition {
   requiredModules: string[];
   complianceFocus: string;
 }
+
+export const MONEY_MAKING_MATERIAL_RULES_PROMPT =
+  '网赚类素材规律：图片单卖点由背景底图、logo/警示语、网赚灵感原子透明图层组成，常见红包、宝箱、金蛋、金币、礼物盒等红黄奖励视觉；奖励信息优先用金币、积分、任务权益等非现金表达，不写具体金额。图片大字报要用短卖点、强对比字块和奖励原子建立首秒停留，规则信息优先用图标化短标签或无文字图标表达积分用途、参与路径和规则页入口，避免密集小字、手机界面小字和功能按钮文字导致乱码；图片多卖点是在非网赚起量素材上叠加任务卡片、红包/金币奖励贴片和可信福利提醒，必须避免仿系统通知、伪官方提醒、真实品牌冒用和明显错字。视频单卖点包含大字报滚屏、风景/解压/城市背景、红包掉落/翻动/加载等利益创意；视频多卖点是在老歌等下沉 UGC 上叠加红包、金币特效；真人类通过权威口播、感性口播、多人采访、情景剧建立“可信赚钱”感。合规底线：只表达任务奖励、福利提醒和可参与感，必要时提示规则页查看；禁止保证收益、稳赚、日入、秒到账、虚构提现截图、夸大赚钱效果和误导下载。';
 
 export const NATIVE_INDUSTRY_DEFINITIONS: Record<NativeIndustry, NativeIndustryDefinition> = {
   game: {
@@ -67,6 +70,19 @@ export const NATIVE_INDUSTRY_DEFINITIONS: Record<NativeIndustry, NativeIndustryD
     durationRange: '15-30s',
     requiredModules: ['商品特写', '使用场景', '卖点对比', '促销权益'],
     complianceFocus: '价格真实性、促销规则、功效承诺、品牌授权',
+  },
+  money_making: {
+    id: 'money_making',
+    title: '网赚',
+    formula: '可信赚钱钩子 + 网赚灵感原子 + 奖励视觉/UGC 叠加 + 信任背书 + CTA',
+    durationRange: '15-30s',
+    requiredModules: [
+      '网赚灵感原子',
+      '红包/金币/宝箱奖励视觉',
+      '大字报或利益创意',
+      'UGC奖励叠加或真人信任套路',
+    ],
+    complianceFocus: `收益表达必须克制可信，禁止保证收益、夸大提现、虚构到账、诱导误导下载；${MONEY_MAKING_MATERIAL_RULES_PROMPT}`,
   },
 };
 
@@ -682,6 +698,41 @@ export const WORKFLOW_PROMPT_DEFINITIONS = {
     defaultPrompt:
       `${PRIVATE_REASONING_PROMPT}请根据优化行业模板、联网补充、需求拆解和策略分析，输出 {variantCount} 条可投放方向不同的爆款广告脚本，目标时长 {durationSec}s，脚本形式 {format}。开启高强度思考，但不要输出推理链；每条脚本必须遵守优化模板中的公式、模块和合规规则，并有强钩子、清晰卖点、自然转化和可执行表达。可使用联网补充里的产品信息和热梗，但必须自然、不过时、不冒犯、不声称未经验证的事实。${AD_CREATIVE_STRUCTURE_PROMPT}${AD_MATERIAL_QUALITY_PROMPT}最终脚本产物只保留“完整广告文案/脚本”本身，不要再输出节奏 beats、画面建议、CTA 字段、风险控制字段或其他拆分字段。优化模板：{optimizedTemplateJson}\n联网补充：{researchJson}\n需求拆解：{decompositionJson}\n策略分析：{analysisJson}\n只输出 JSON：{"scripts":[{"index":1,"title":"...","script":"完整广告文案/脚本"}],"summary":"整体投放建议"}。`,
   },
+  'ecommerce_image.product_understand': {
+    title: '商品图理解',
+    description: '识别商品主体、品类、视觉特征、牛皮癣文字和背景问题。',
+    variables: ['productName', 'sellingPoints'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}你是电商商品主图理解助手。请直接分析输入商品图片，识别商品主体、品类、包装视觉、背景干扰、非商品文案、衬底、logo、牛皮癣样式元素和可安全表达的卖点。不要输出推理链，不要编造图片中不存在的品牌或功效。产品名：{productName}\n用户补充卖点：{sellingPoints}\n只输出 JSON：{"productName":"...","category":"...","visualFeatures":["颜色","形状","包装元素"],"suspectedTextNoise":["非商品文案/水印/装饰元素"],"backgroundIssues":["杂乱衬底","促销贴纸"],"sellingPoints":["可安全使用的短卖点"],"complianceRisks":["价格/功效/授权风险"]}。`,
+  },
+  'ecommerce_image.copy_generate': {
+    title: '包装文案生成',
+    description: '生成适合图片包装的短卖点、词性标注和样式策略。',
+    variables: ['productJson', 'fixedCopy', 'sellingPoints', 'style'],
+    defaultPrompt:
+      `${PRIVATE_REASONING_PROMPT}请为电商图片包装生成短文案和渲染策略。文案有两类来源：若用户提供固定文案则在保留语义的基础上丰富；否则基于商品理解和用户卖点生成个性化短卖点。请进行词性标注，名词适合放大，形容词适合强调质感或效果，避免绝对化承诺。商品理解：{productJson}\n固定文案：{fixedCopy}\n用户卖点：{sellingPoints}\n包装风格：{style}\n只输出 JSON：{"headline":"主标题，8-14字","subHeadline":"副标题，8-18字","badges":["短徽标1","短徽标2"],"keywords":[{"text":"洗面奶","partOfSpeech":"noun|adjective|verb|other","emphasis":"high|medium|low"}],"styleHints":["italic","stroke","border","top_bottom_border","background"],"colorStrategy":"分析背景左上角和右下角，选择同色系深色或对比色","riskControl":"合规规避"}。`,
+  },
+  'ecommerce_image.main_image_beautify': {
+    title: '主图美化',
+    description: '用图像生成清理非商品文案、衬底、logo 和牛皮癣元素。',
+    variables: ['productJson', 'style'],
+    defaultPrompt:
+      '请对参考商品主图做电商主图美化：去除非商品文案、促销贴纸、水印、杂乱衬底、无关 logo、牛皮癣式文字块和低质装饰元素；保留商品主体、包装形状、真实颜色、材质、可读商品包装信息和广告安全背景。不要改变商品品类和包装核心识别，不要新增无法证明的文字。风格：{style}。商品理解：{productJson}。输出为干净可继续包装的商品主图。',
+  },
+  'ecommerce_image.background_replace': {
+    title: '背景替换',
+    description: '保持商品主体不变，替换并融合电商场景背景。',
+    variables: ['productJson', 'style', 'scene', 'variantIndex'],
+    defaultPrompt:
+      '请基于参考商品图做电商背景替换与前背景融合。商品主体必须保持位置、形状、颜色、包装和可识别文字稳定，不重绘商品本体；只重绘和扩展背景，让商品自然置于指定场景中。场景：{scene}。风格：{style}。变体编号：{variantIndex}。商品理解：{productJson}。要求光影一致、边缘自然、无多余文字、水印和伪品牌元素。',
+  },
+  'ecommerce_image.copy_render': {
+    title: '文案渲染',
+    description: '遵循渲染计划，在背景替换结果上稳定渲染标题、副标题和徽标。',
+    variables: ['productJson', 'copyJson', 'renderPlanJson', 'style', 'scene', 'variantIndex'],
+    defaultPrompt:
+      '请在参考电商图上进行文案包装渲染，并严格遵循 render_plan.json 中对应变体的文字布局、强调关键词、颜色策略、禁区和可读性规则。只使用文案 JSON 中的 headline、subHeadline 和 badges，不要生成乱码、错别字、额外文字、伪品牌、虚假价格或绝对化承诺。文字渲染必须稳定清晰：优先保证中文笔画完整、字形不变形、边缘无重影；同一短语必须完整连续，不要拆字、漏字或改写。智能配色：按渲染计划选择同色系深色或高对比安全色，必要时使用描边、斜体、矩形包裹、上下边框或衬底增强可读性。智能大小：keywords 中 partOfSpeech=noun 且 emphasis=high 的词要放大，形容词可用描边或填充/边缘色互换。不得遮挡商品主体、包装核心识别和 render_plan.json 标记的 forbiddenRegions。风格：{style}。场景：{scene}。变体：{variantIndex}。商品理解：{productJson}。文案计划：{copyJson}。渲染计划：{renderPlanJson}。',
+  },
   'video_scoring.brand_score': {
     title: '品牌广告打分',
     description: '基于品牌广告维度评估完整视频，输出分数、证据、分析和建议。',
@@ -823,7 +874,7 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
     title: '广告文案脚本编写',
     description: '输入需求后先匹配行业模板，再优化模板、拆解需求并输出爆款广告脚本。',
     nodes: [
-      { id: 'industry_router', title: '行业模板路由', description: '从六行业模板中匹配最适合的文案脚本模板。', artifact: 'industry.json', promptIds: [] },
+      { id: 'industry_router', title: '行业模板路由', description: '从七行业模板中匹配最适合的文案脚本模板。', artifact: 'industry.json', promptIds: [] },
       { id: 'template_optimize', title: '模板优化', description: '用大模型把行业模板优化成当前需求的专用策略。', artifact: 'template.json', promptIds: ['copywriting.template_optimize'] },
       { id: 'web_research', title: '联网补充', description: '补充产品相关信息、用户关注点和热梗语境。', artifact: 'research.json', promptIds: ['copywriting.web_research'] },
       { id: 'requirement_decompose', title: '需求拆解', description: '基于优化模板拆解产品、人群、卖点、平台和约束。', artifact: 'requirement.json', promptIds: ['copywriting.requirement_decompose'] },
@@ -847,6 +898,18 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
       { id: 'report_writer', title: '结果整理', description: '把结构化评分整理为可读报告并登记到素材库。', artifact: 'report.md', promptIds: [] },
     ],
   },
+  ecommerce_image: {
+    type: 'ecommerce_image',
+    title: '电商图片包装',
+    description: '从商品主图理解、主图美化、背景替换到文案渲染，生成可外放的电商包装图片。',
+    nodes: [
+      { id: 'product_understand', title: '商品图理解', description: '识别商品主体、牛皮癣文字、背景问题和可用卖点，输出 product.json。', artifact: 'product.json', promptIds: ['ecommerce_image.product_understand'] },
+      { id: 'copy_generate', title: '文案生成', description: '生成短卖点、词性标注和渲染样式策略，输出 copy.json 和 copy.md。', artifact: 'copy.md', promptIds: ['ecommerce_image.copy_generate'] },
+      { id: 'main_image_beautify', title: '主图美化', description: '去除非商品文案、衬底、logo 和牛皮癣元素，输出 beautified.png 和 beautify_report.json，并登记中间 image 素材。', artifact: 'beautified.png', promptIds: ['ecommerce_image.main_image_beautify'] },
+      { id: 'background_replace', title: '背景替换', description: '保持商品主体不变，替换并融合电商场景背景，输出 background_variant_<i>.png 和 backgrounds.json，并登记中间 image 素材。', artifact: 'backgrounds.json', promptIds: ['ecommerce_image.background_replace'] },
+      { id: 'copy_render', title: '文案渲染', description: '先输出 render_plan.json，再按渲染计划稳定渲染文字，输出 final_<i>.png 和带质量元信息的 finals.json，并登记最终 image 素材。', artifact: 'finals.json', promptIds: ['ecommerce_image.copy_render'] },
+    ],
+  },
   lark_download: {
     type: 'lark_download',
     title: '飞书视频下载',
@@ -864,7 +927,7 @@ export const WORKFLOW_DEFINITIONS: Record<TaskType, WorkflowDefinition> = {
   native: {
     type: 'native',
     title: '原生广告素材生成',
-    description: '按游戏、短剧、小说、社交、工具、电商六类行业工作流生成投放素材。',
+    description: '按游戏、短剧、小说、社交、工具、电商、网赚七类行业工作流生成投放素材。',
     nodes: [
       { id: 'industry_router', title: '行业路由', description: '加载行业策略、时长、必备模块和合规硬规则。', artifact: 'industry.json', promptIds: [] },
       { id: 'concept_planner', title: '概念规划', description: '按行业公式生成多条创意方向。', artifact: 'concepts.json', promptIds: ['native.concept_plan'] },

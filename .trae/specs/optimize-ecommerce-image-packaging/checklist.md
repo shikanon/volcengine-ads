@@ -1,0 +1,13 @@
+- [x] `spec.md` 已补充电商图片包装优化契约，且不改变五步 Pipeline 名称
+- [x] `src/main/pipelines/ecommerce-image/index.ts` 会生成 `render_plan.json`
+- [x] `finals.json` 包含每张最终图的状态、源背景、文案、关键词和质量说明
+- [x] 空关键词场景有兜底 noun keyword，不会阻断后续渲染计划生成
+- [x] 主图美化产物 `beautified.png` 会登记为 `image` 素材并带有 `beautified` tag
+- [x] 背景替换产物 `background_variant_<i>.png` 会登记为 `image` 素材并带有 `background` tag
+- [x] 最终图素材保留现有登记，并补充 `final` tag
+- [x] 电商图片包装页面展示模型调用次数和产物位置提示
+- [x] 单元测试覆盖 `render_plan.json`、扩展后的 `finals.json`、中间素材登记和关键词兜底
+- [x] `npm run typecheck` 通过
+- [x] `npm run lint` 通过
+- [x] `npm test` 通过
+- [x] `npm run build` 通过

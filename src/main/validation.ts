@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { extname, isAbsolute } from 'node:path';
 
 import { AppError } from './errors.js';
 import { parseLarkDocumentUrl } from './services/lark-download-helpers.js';
@@ -24,6 +24,8 @@ import type {
   CopywritingIndustry,
   CopywritingInput,
   CopywritingScriptFormat,
+  EcommerceImageInput,
+  EcommerceImageStyle,
   CreateTaskRequest,
   ExplosionFissionConfig,
   ExplosionFissionMode,
@@ -45,12 +47,20 @@ const NATIVE_INDUSTRIES: readonly NativeIndustry[] = [
   'social',
   'tool',
   'ecommerce',
+  'money_making',
 ];
 const NATIVE_RATIOS: readonly NativeRatio[] = ['9:16', '16:9', '1:1'];
 const COPYWRITING_FORMATS: readonly CopywritingScriptFormat[] =
   COPYWRITING_SCRIPT_FORMAT_DEFINITIONS.map((definition) => definition.value);
 const COPYWRITING_INDUSTRIES: readonly CopywritingIndustry[] = ['auto', ...NATIVE_INDUSTRIES];
 const VIDEO_SCORING_CATEGORIES = VIDEO_SCORING_CATEGORY_DEFINITIONS.map((definition) => definition.value);
+const ECOMMERCE_IMAGE_STYLES: readonly EcommerceImageStyle[] = [
+  'clean',
+  'premium',
+  'promotion',
+  'lifestyle',
+];
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp']);
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -425,6 +435,41 @@ function validateVideoScoring(input: unknown): VideoScoringInput {
   };
 }
 
+function validateEcommerceImage(input: unknown): EcommerceImageInput {
+  if (!isRecord(input)) {
+    throw new AppError('E_INPUT_VALIDATION', '电商图片包装输入格式错误');
+  }
+  const productImagePath = requireString(input.productImagePath, '商品主图');
+  if (!existsSync(productImagePath)) {
+    throw new AppError('E_INPUT_VALIDATION', '商品主图不存在');
+  }
+  const extension = extname(productImagePath).toLowerCase();
+  if (!IMAGE_EXTENSIONS.has(extension)) {
+    throw new AppError('E_INPUT_VALIDATION', '商品主图只支持 png、jpg、jpeg、webp、bmp');
+  }
+  const productName = optionalTrimmedString(input, 'productName', 100);
+  const sellingPoints = optionalTrimmedString(input, 'sellingPoints', 1000);
+  const fixedCopy = optionalTrimmedString(input, 'fixedCopy', 120);
+  const scenePrompt = optionalTrimmedString(input, 'scenePrompt', 500);
+  const variantCount = Math.trunc(requireNumber(input.variantCount ?? 3, '图片数量'));
+  if (variantCount < 1 || variantCount > 5) {
+    throw new AppError('E_INPUT_VALIDATION', '图片数量必须在 1..5');
+  }
+  const style = input.style ?? 'promotion';
+  if (typeof style !== 'string' || !ECOMMERCE_IMAGE_STYLES.includes(style as EcommerceImageStyle)) {
+    throw new AppError('E_INPUT_VALIDATION', '电商图片包装风格不支持');
+  }
+  return {
+    productImagePath,
+    ...(productName !== undefined ? { productName } : {}),
+    ...(sellingPoints !== undefined ? { sellingPoints } : {}),
+    ...(fixedCopy !== undefined ? { fixedCopy } : {}),
+    ...(scenePrompt !== undefined ? { scenePrompt } : {}),
+    variantCount,
+    style: style as EcommerceImageStyle,
+  };
+}
+
 function validateLarkDownload(input: unknown): LarkDownloadInput {
   if (!isRecord(input)) {
     throw new AppError('E_INPUT_VALIDATION', '飞书下载输入格式错误');
@@ -467,6 +512,9 @@ export function validateCreateTaskRequest(req: CreateTaskRequest): CreateTaskReq
   }
   if (req.type === 'video_scoring') {
     return { type: 'video_scoring', input: validateVideoScoring(req.input) };
+  }
+  if (req.type === 'ecommerce_image') {
+    return { type: 'ecommerce_image', input: validateEcommerceImage(req.input) };
   }
   if (req.type === 'lark_download') {
     return { type: 'lark_download', input: validateLarkDownload(req.input) };

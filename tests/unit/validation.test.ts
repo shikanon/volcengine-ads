@@ -297,6 +297,33 @@ describe('validateCreateTaskRequest', () => {
     });
   });
 
+  it('accepts money making native industry generation input', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'native',
+        input: {
+          industry: 'money_making',
+          brief: '网赚类信息流短视频，突出红包金币奖励视觉、可信口播背书和自然下载引导。',
+          productName: '极速版内容 APP',
+          variantCount: 1,
+          durationSec: 30,
+          ratio: '9:16',
+        },
+      }),
+    ).toEqual({
+      type: 'native',
+      input: {
+        industry: 'money_making',
+        brief: '网赚类信息流短视频，突出红包金币奖励视觉、可信口播背书和自然下载引导。',
+        productName: '极速版内容 APP',
+        variantCount: 1,
+        durationSec: 30,
+        ratio: '9:16',
+        resolution: DEFAULT_VIDEO_RESOLUTION,
+      },
+    });
+  });
+
   it('accepts copywriting generation input', () => {
     expect(
       validateCreateTaskRequest({
@@ -351,6 +378,33 @@ describe('validateCreateTaskRequest', () => {
         platform: '抖音信息流',
         format: 'short_video',
         variantCount: 3,
+        durationSec: 30,
+        enableWebSearch: true,
+      },
+    });
+  });
+
+  it('accepts money making copywriting industry template', () => {
+    expect(
+      validateCreateTaskRequest({
+        type: 'copywriting',
+        input: {
+          industry: 'money_making',
+          requirement: '为极速版内容 APP 写一条可信网赚广告脚本，突出看内容获得奖励和真实用户场景。',
+          productName: '极速版内容 APP',
+          format: 'short_video',
+          variantCount: 2,
+          durationSec: 30,
+        },
+      }),
+    ).toEqual({
+      type: 'copywriting',
+      input: {
+        industry: 'money_making',
+        requirement: '为极速版内容 APP 写一条可信网赚广告脚本，突出看内容获得奖励和真实用户场景。',
+        productName: '极速版内容 APP',
+        format: 'short_video',
+        variantCount: 2,
         durationSec: 30,
         enableWebSearch: true,
       },
@@ -459,6 +513,84 @@ describe('validateCreateTaskRequest', () => {
     } as unknown as Parameters<typeof validateCreateTaskRequest>[0];
 
     expect(() => validateCreateTaskRequest(request)).toThrow(AppError);
+  });
+
+  it('accepts ecommerce image packaging input', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const productImagePath = join(dir, 'product.png');
+    writeFileSync(productImagePath, 'image');
+
+    expect(
+      validateCreateTaskRequest({
+        type: 'ecommerce_image',
+        input: {
+          productImagePath,
+          productName: '氨基酸洗面奶',
+          sellingPoints: '温和清洁，适合通勤人群',
+          fixedCopy: '快来抖音购物',
+          scenePrompt: '清晨浴室台面',
+          variantCount: 3,
+          style: 'promotion',
+        },
+      }),
+    ).toEqual({
+      type: 'ecommerce_image',
+      input: {
+        productImagePath,
+        productName: '氨基酸洗面奶',
+        sellingPoints: '温和清洁，适合通勤人群',
+        fixedCopy: '快来抖音购物',
+        scenePrompt: '清晨浴室台面',
+        variantCount: 3,
+        style: 'promotion',
+      },
+    });
+  });
+
+  it('rejects ecommerce image input when product image is missing', () => {
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'ecommerce_image',
+        input: {
+          productImagePath: '/tmp/not-found-product.png',
+          variantCount: 2,
+          style: 'clean',
+        },
+      }),
+    ).toThrow(AppError);
+  });
+
+  it('rejects unsupported ecommerce image style', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const productImagePath = join(dir, 'product.png');
+    writeFileSync(productImagePath, 'image');
+    const request = {
+      type: 'ecommerce_image',
+      input: {
+        productImagePath,
+        variantCount: 2,
+        style: 'unknown',
+      },
+    } as unknown as Parameters<typeof validateCreateTaskRequest>[0];
+
+    expect(() => validateCreateTaskRequest(request)).toThrow(AppError);
+  });
+
+  it('rejects ecommerce image variant count out of range', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'volcengine-ads-'));
+    const productImagePath = join(dir, 'product.png');
+    writeFileSync(productImagePath, 'image');
+
+    expect(() =>
+      validateCreateTaskRequest({
+        type: 'ecommerce_image',
+        input: {
+          productImagePath,
+          variantCount: 6,
+          style: 'promotion',
+        },
+      }),
+    ).toThrow(AppError);
   });
 
   it('accepts lark download input with optional absolute output directory', () => {

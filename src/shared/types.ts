@@ -7,6 +7,7 @@ export type TaskType =
   | 'native'
   | 'copywriting'
   | 'video_scoring'
+  | 'ecommerce_image'
   | 'lark_download';
 export type TaskStatus =
   | 'queued'
@@ -25,13 +26,21 @@ export type StepStatus =
   | 'canceled'
   | 'waiting_confirmation';
 export type AssetKind = 'video' | 'audio' | 'image' | 'script' | 'report';
-export type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool' | 'ecommerce';
+export type NativeIndustry =
+  | 'game'
+  | 'short_drama'
+  | 'novel'
+  | 'social'
+  | 'tool'
+  | 'ecommerce'
+  | 'money_making';
 export type NativeRatio = '9:16' | '16:9' | '1:1';
 export type VideoResolution = '480p' | '720p' | '1080p';
 export type CopywritingScriptFormat = 'short_video' | 'feed_ad' | 'live_stream';
 export type CopywritingIndustry = NativeIndustry | 'auto';
 export type LarkDocumentType = 'wiki' | 'docx';
 export type AdVideoScoringCategory = 'brand' | 'performance' | 'creative';
+export type EcommerceImageStyle = 'clean' | 'premium' | 'promotion' | 'lifestyle';
 export type FissionIndustry = 'ecommerce' | 'short_drama';
 export type EcommerceFissionMode =
   | 'pain_pretrailer'
@@ -146,6 +155,7 @@ export interface TaskRecord {
     | NativeInput
     | CopywritingInput
     | VideoScoringInput
+    | EcommerceImageInput
     | LarkDownloadInput;
   error?: string;
   createdAt: number;
@@ -314,6 +324,43 @@ export interface CopywritingInput {
 export interface VideoScoringInput {
   sourceVideoPath: string;
   category: AdVideoScoringCategory;
+}
+
+export const ECOMMERCE_IMAGE_STYLE_DEFINITIONS: Array<{
+  value: EcommerceImageStyle;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'clean',
+    label: '干净主图',
+    description: '去除牛皮癣、杂乱衬底和非商品文案，突出商品主体。',
+  },
+  {
+    value: 'premium',
+    label: '高级质感',
+    description: '弱化促销感，强调光影、材质和品牌感场景。',
+  },
+  {
+    value: 'promotion',
+    label: '促销转化',
+    description: '强化卖点短语、权益感和行动刺激，适合信息流转化。',
+  },
+  {
+    value: 'lifestyle',
+    label: '生活场景',
+    description: '把商品融合进真实使用场景，突出氛围和人群代入。',
+  },
+];
+
+export interface EcommerceImageInput {
+  productImagePath: string;
+  productName?: string;
+  sellingPoints?: string;
+  fixedCopy?: string;
+  scenePrompt?: string;
+  variantCount: number;
+  style: EcommerceImageStyle;
 }
 
 export interface VideoScoringAudioMetric {
@@ -497,6 +544,7 @@ export interface CreateTaskRequest {
     | NativeInput
     | CopywritingInput
     | VideoScoringInput
+    | EcommerceImageInput
     | LarkDownloadInput;
 }
 

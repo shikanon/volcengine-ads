@@ -1,4 +1,5 @@
-import { BrowserWindow } from 'electron';
+import type { BrowserWindow } from 'electron';
+import { createRequire } from 'node:module';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -53,6 +54,8 @@ interface DownloadVideoResult {
 }
 
 function createHiddenWindow(): BrowserWindow {
+  const require = createRequire(import.meta.url);
+  const { BrowserWindow } = require('electron') as { BrowserWindow: typeof import('electron').BrowserWindow };
   return new BrowserWindow({
     show: false,
     width: 1280,

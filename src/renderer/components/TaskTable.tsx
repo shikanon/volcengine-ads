@@ -29,6 +29,7 @@ const TASK_TYPE_LABEL: Record<TaskType, string> = {
   native: '原生',
   copywriting: '文案脚本',
   video_scoring: '视频打分',
+  ecommerce_image: '电商图片',
   lark_download: '飞书下载',
 };
 
@@ -111,6 +112,13 @@ const STEP_LABELS: Record<TaskType, Record<string, string>> = {
     ingest: '素材导入',
     score: '视频评分',
     report_writer: '结果整理',
+  },
+  ecommerce_image: {
+    product_understand: '商品图理解',
+    copy_generate: '文案生成',
+    main_image_beautify: '主图美化',
+    background_replace: '背景替换',
+    copy_render: '文案渲染',
   },
   lark_download: {
     download: '视频下载',

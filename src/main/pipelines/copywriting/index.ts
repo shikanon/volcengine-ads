@@ -151,6 +151,21 @@ const COPYWRITING_INDUSTRY_KEYWORDS: Record<NativeIndustry, string[]> = {
     '护肤',
     '食品',
   ],
+  money_making: [
+    '网赚',
+    '赚钱',
+    '挣钱',
+    '收益',
+    '红包',
+    '金币',
+    '宝箱',
+    '提现',
+    '极速版',
+    '看视频赚钱',
+    '刷视频赚钱',
+    '奖励',
+    '任务奖励',
+  ],
 };
 
 const COPYWRITING_INDUSTRIES = Object.keys(NATIVE_INDUSTRY_DEFINITIONS) as NativeIndustry[];

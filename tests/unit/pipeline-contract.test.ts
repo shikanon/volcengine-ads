@@ -4,6 +4,8 @@ import { getStepNames } from '../../src/main/pipelines/index.js';
 import {
   AD_CREATIVE_STRUCTURE_PROMPT,
   AD_MATERIAL_QUALITY_PROMPT,
+  MONEY_MAKING_MATERIAL_RULES_PROMPT,
+  NATIVE_INDUSTRY_DEFINITIONS,
   PRIVATE_REASONING_PROMPT,
   SEEDANCE_DIRECTOR_PROMPT,
   SEEDANCE_PROMPT_CARD_PROMPT,
@@ -94,6 +96,16 @@ describe('pipeline step contracts', () => {
     ]);
   });
 
+  it('keeps ecommerce image packaging steps aligned with spec.md §3', () => {
+    expect(getStepNames('ecommerce_image')).toEqual([
+      'product_understand',
+      'copy_generate',
+      'main_image_beautify',
+      'background_replace',
+      'copy_render',
+    ]);
+  });
+
   it('keeps lark download steps aligned with integrate-feishu-video-download spec', () => {
     expect(getStepNames('lark_download')).toEqual(['download']);
   });
@@ -173,6 +185,30 @@ describe('pipeline step contracts', () => {
     for (const id of nativeVideoPromptIds) {
       expect(prompts[id]).toContain(VIDEO_TEXT_STICKER_PROMPT);
     }
+  });
+
+  it('keeps money-making prompt rules aligned with real image quality evaluation criteria', () => {
+    const definition = NATIVE_INDUSTRY_DEFINITIONS.money_making;
+    expect(definition.requiredModules).toContain('红包/金币/宝箱奖励视觉');
+    expect(definition.requiredModules).toContain('大字报或利益创意');
+    expect(definition.requiredModules).toContain('UGC奖励叠加或真人信任套路');
+    expect(definition.complianceFocus).toContain(MONEY_MAKING_MATERIAL_RULES_PROMPT);
+    expect(definition.complianceFocus).toContain('保证收益');
+    expect(definition.complianceFocus).toContain('虚构提现截图');
+    expect(definition.complianceFocus).toContain('误导下载');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('网赚灵感原子');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('下沉 UGC');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('可信赚钱');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('非现金表达');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('避免仿系统通知');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('图标化短标签');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('无文字图标');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('避免密集小字');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('导致乱码');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('手机界面小字');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('参与路径');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('规则页入口');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('明显错字');
   });
 
   it('keeps video understanding prompts on full-video input instead of keyframes', () => {

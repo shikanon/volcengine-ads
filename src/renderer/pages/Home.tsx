@@ -4,6 +4,7 @@ import {
   BarChartOutlined,
   DownloadOutlined,
   FileTextOutlined,
+  PictureOutlined,
   PlayCircleOutlined,
   RocketOutlined,
   ThunderboltOutlined,
@@ -15,7 +16,17 @@ import { useTasksStore } from '../stores/tasks-store.js';
 import type { TaskStatus } from '../../shared/types.js';
 
 interface HomeProps {
-  onNavigate(page: 'explosion' | 'native' | 'copywriting' | 'pretrailer' | 'avatar' | 'video_scoring' | 'lark_download'): void;
+  onNavigate(
+    page:
+      | 'explosion'
+      | 'native'
+      | 'copywriting'
+      | 'ecommerce_image'
+      | 'pretrailer'
+      | 'avatar'
+      | 'video_scoring'
+      | 'lark_download',
+  ): void;
 }
 
 type QueueFilter = 'all' | TaskStatus | 'needs_attention';
@@ -41,6 +52,13 @@ const WORKFLOW_LAUNCHERS = [
     title: '广告文案脚本',
     description: '输入需求，拆解卖点和人群，输出多条爆款脚本。',
     meta: 'LLM 深度分析',
+  },
+  {
+    key: 'ecommerce_image',
+    icon: <PictureOutlined />,
+    title: '电商图片包装',
+    description: '商品主图美化、背景替换和智能文案渲染，生成可外放包装图。',
+    meta: '图片外放',
   },
   {
     key: 'pretrailer',

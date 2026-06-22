@@ -19,6 +19,7 @@ import type {
 } from '../../src/main/model-client/index.js';
 import { copywritingPipeline } from '../../src/main/pipelines/copywriting/index.js';
 import { runPipeline } from '../../src/main/pipelines/runner.js';
+import { MONEY_MAKING_MATERIAL_RULES_PROMPT } from '../../src/shared/workflows.js';
 
 class CopywritingMockModelClient implements ModelClient {
   private chatIndex = 0;
@@ -274,5 +275,49 @@ describe('copywritingPipeline', () => {
     expect(templatePrompt).toContain('用户未填写文案需求');
     expect(analysisPrompt).toContain('联网补充：开启');
     expect(repository.getTask(task.id)?.status).toBe('success');
+  });
+
+  it('auto routes money making requirements to the money making template', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'copywriting-pipeline-money-making-'));
+    const repository = new SqliteTaskRepository(join(userDataPath, 'tasks.db'));
+    const modelClient = new CopywritingMockModelClient();
+    const task = repository.createTask({
+      request: {
+        type: 'copywriting',
+        input: {
+          industry: 'auto',
+          requirement: '为极速版内容 APP 写网赚广告脚本，突出红包金币奖励、看视频赚钱和可信用户口播。',
+          productName: '极速版内容 APP',
+          platform: '抖音信息流',
+          format: 'short_video',
+          variantCount: 1,
+          durationSec: 30,
+          enableWebSearch: true,
+        },
+      },
+      stepNames: copywritingPipeline.steps.map((step) => step.name),
+    });
+
+    await runPipeline({
+      task,
+      pipeline: copywritingPipeline,
+      repository,
+      modelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    });
+
+    await expect(readFile(join(userDataPath, 'artifacts', task.id, 'industry.json'), 'utf8')).resolves.toContain(
+      '"industry": "money_making"',
+    );
+    expect(JSON.stringify(modelClient.chatMessages)).toContain(MONEY_MAKING_MATERIAL_RULES_PROMPT);
+    expect(repository.listAssets()).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        kind: 'script',
+        tags: ['copywriting', 'money_making', 'short_video'],
+      }),
+    ]);
   });
 });

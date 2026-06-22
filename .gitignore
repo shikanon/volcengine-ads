@@ -12,3 +12,6 @@ playwright-report/
 userData/
 tmp/
 resources/bin/
+# 本地 demo 运行产物
+/runs/
+

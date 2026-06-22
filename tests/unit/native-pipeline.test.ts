@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CreateTaskWithSteps, TaskRepository } from '../../src/main/db/index.js';
 import type {
   AudioResult,
+  ChatMessage,
   ImageResult,
   ModelClient,
   SeedanceVideoRequest,
@@ -18,7 +19,10 @@ import type { AssetRecord, TaskRecord, TaskStatus } from '../../src/shared/types
 import { concatSilentVideos, concatVideos, muxAudioVideo } from '../../src/main/media/ffmpeg.js';
 import { nativePipeline } from '../../src/main/pipelines/native/index.js';
 import { runPipeline } from '../../src/main/pipelines/runner.js';
-import { VIDEO_TEXT_STICKER_PROMPT } from '../../src/shared/workflows.js';
+import {
+  MONEY_MAKING_MATERIAL_RULES_PROMPT,
+  VIDEO_TEXT_STICKER_PROMPT,
+} from '../../src/shared/workflows.js';
 
 vi.mock('../../src/main/media/ffmpeg.js', async () => {
   const { mkdir, writeFile } = await import('node:fs/promises');
@@ -218,6 +222,7 @@ class MemoryTaskRepository implements TaskRepository {
 
 class NativeMockModelClient implements ModelClient {
   private chatIndex = 0;
+  readonly chatMessages: ChatMessage[][] = [];
   readonly videoRequests: SeedanceVideoRequest[] = [];
   private readonly failedVideoIndexes = new Set<number | string>();
 
@@ -274,7 +279,8 @@ class NativeMockModelClient implements ModelClient {
     return { localPath, duration: 4 };
   }
 
-  async chat(): Promise<string> {
+  async chat(messages: ChatMessage[]): Promise<string> {
+    this.chatMessages.push(messages);
     const responses = [
       JSON.stringify({
         concepts: [
@@ -345,7 +351,7 @@ class NativeMockModelClient implements ModelClient {
 }
 
 describe('nativePipeline', () => {
-  it('runs the five-industry native workflow and registers final assets', async () => {
+  it('runs the native workflow and registers final assets', async () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'native-pipeline-'));
     const repository = new MemoryTaskRepository();
     const task = repository.createTask({
@@ -394,6 +400,65 @@ describe('nativePipeline', () => {
         tags: ['native', 'tool'],
       }),
     ]);
+  });
+
+  it('routes money making material rules into native prompts and asset tags', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'native-pipeline-'));
+    const repository = new MemoryTaskRepository();
+    const modelClient = new NativeMockModelClient();
+    const task = repository.createTask({
+      request: {
+        type: 'native',
+        input: {
+          industry: 'money_making',
+          brief: '网赚类信息流短视频，突出红包金币奖励视觉、可信口播背书和自然下载引导。',
+          productName: '极速版内容 APP',
+          variantCount: 1,
+          durationSec: 15,
+          ratio: '9:16',
+        },
+      },
+      stepNames: nativePipeline.steps.map((step) => step.name),
+    });
+
+    const runParams = {
+      task,
+      pipeline: nativePipeline,
+      repository,
+      modelClient,
+      workflowPrompts: {},
+      userDataPath,
+      emitProgress: () => undefined,
+    };
+
+    await runPipeline(runParams);
+    repository.confirmWaitingStep(task.id);
+    await runPipeline(runParams);
+
+    const completed = repository.getTask(task.id);
+    expect(completed?.status).toBe('success');
+    expect(repository.listAssets()).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        kind: 'video',
+        tags: ['native', 'money_making'],
+      }),
+    ]);
+
+    const industryJson = await readFile(
+      join(userDataPath, 'artifacts', task.id, 'industry.json'),
+      'utf8',
+    );
+    expect(industryJson).toContain('"industry": "money_making"');
+    expect(industryJson).toContain('红包/金币/宝箱奖励视觉');
+    expect(industryJson).toContain('保证收益');
+
+    const promptText = JSON.stringify(modelClient.chatMessages);
+    expect(promptText).toContain(MONEY_MAKING_MATERIAL_RULES_PROMPT);
+    expect(promptText).toContain('网赚灵感原子');
+    expect(promptText).toContain('大字报滚屏');
+    expect(promptText).toContain('下沉 UGC');
+    expect(promptText).toContain('权威口播');
   });
 
   it('keeps native task successful when consistency checker only returns warnings', async () => {

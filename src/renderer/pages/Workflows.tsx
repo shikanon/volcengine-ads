@@ -29,6 +29,7 @@ const WORKFLOW_OPTIONS: Array<{ value: TaskType; label: string }> = [
   { value: 'explosion', label: '广告爆款裂变' },
   { value: 'native', label: '原生素材' },
   { value: 'copywriting', label: '广告文案脚本' },
+  { value: 'ecommerce_image', label: '电商图片包装' },
   { value: 'pretrailer', label: '广告前贴' },
   { value: 'avatar', label: '数字人口播广告' },
   { value: 'video_scoring', label: '广告视频打分' },

@@ -471,3 +471,99 @@ export async function overlayProductImages(
   );
   return outputPath;
 }
+
+export interface PlaceholderImageOptions {
+  width?: number;
+  height?: number;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  accentColor?: string;
+  mainText?: string;
+  subText?: string;
+  badgeText?: string;
+}
+
+export async function generatePlaceholderImage(
+  outputPath: string,
+  opts: PlaceholderImageOptions = {},
+): Promise<string> {
+  const {
+    width = 1024,
+    height = 1024,
+    backgroundColor = '#f4ede2',
+    foregroundColor = '#1c1917',
+    accentColor = '#e0583a',
+    mainText = '',
+    subText = '',
+    badgeText = '',
+  } = opts;
+  await mkdir(dirname(outputPath), { recursive: true });
+
+  const bgFilter = `color=c=${backgroundColor.replace('#', '')}:size=${width}x${height},format=rgba[bg]`;
+  const filters: string[] = [bgFilter];
+  const layers: string[] = [];
+  const hasMain = mainText.length > 0;
+  const hasSub = subText.length > 0;
+  const hasBadge = badgeText.length > 0;
+  let lastLabel = 'bg';
+
+  if (hasBadge) {
+    const badgeY = Math.round(height * 0.15);
+    const badgeFontSize = Math.round(height * 0.05);
+    const label = 'badge';
+    filters.push(
+      `[${lastLabel}]drawtext=text='${escapeFfDrawText(badgeText)}':x=(w-text_w)/2:y=${badgeY}:fontsize=${badgeFontSize}:fontcolor=${accentColor.replace('#', '')}:box=1:boxcolor=${accentColor.replace('#', '')}@0.15:boxborderw=16[${label}]`,
+    );
+    layers.push(label);
+    lastLabel = label;
+  }
+
+  if (hasMain) {
+    const mainFontSize = Math.round(height * 0.13);
+    const mainY = Math.round(height * 0.42);
+    const label = 'main';
+    filters.push(
+      `[${lastLabel}]drawtext=text='${escapeFfDrawText(mainText)}':x=(w-text_w)/2:y=${mainY}:fontsize=${mainFontSize}:fontcolor=${foregroundColor.replace('#', '')}:box=0[${label}]`,
+    );
+    layers.push(label);
+    lastLabel = label;
+  }
+
+  if (hasSub) {
+    const subFontSize = Math.round(height * 0.055);
+    const subY = Math.round(height * 0.6);
+    const label = 'sub';
+    filters.push(
+      `[${lastLabel}]drawtext=text='${escapeFfDrawText(subText)}':x=(w-text_w)/2:y=${subY}:fontsize=${subFontSize}:fontcolor=${foregroundColor.replace('#', '')}@0.85[${label}]`,
+    );
+    layers.push(label);
+    lastLabel = label;
+  }
+
+  if (layers.length === 0) {
+    await run(
+      ffmpeg()
+        .input(`color=c=${backgroundColor.replace('#', '')}:size=${width}x${height}:d=1`)
+        .inputFormat('lavfi')
+        .outputOptions(['-frames:v', '1', '-c:v', 'png'])
+        .output(outputPath),
+    );
+    return outputPath;
+  }
+
+  await run(
+    ffmpeg()
+      .complexFilter(filters, lastLabel)
+      .outputOptions(['-frames:v', '1', '-c:v', 'png'])
+      .output(outputPath),
+  );
+  return outputPath;
+}
+
+function escapeFfDrawText(value: string): string {
+  return value
+    .replace(/\\/gu, '\\\\')
+    .replace(/:/gu, '\\:')
+    .replace(/'/gu, "\\'")
+    .replace(/\n/gu, ' ');
+}

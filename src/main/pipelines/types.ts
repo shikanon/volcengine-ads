@@ -3,6 +3,7 @@ import type { TaskRepository } from '../db/index.js';
 import type {
   AvatarInput,
   CopywritingInput,
+  EcommerceImageInput,
   ExplosionInput,
   LarkDownloadInput,
   NativeInput,
@@ -30,6 +31,7 @@ export type PipelineInput =
   | NativeInput
   | CopywritingInput
   | VideoScoringInput
+  | EcommerceImageInput
   | LarkDownloadInput;
 
 export interface StepContext<TInput = PipelineInput> {

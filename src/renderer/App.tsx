@@ -15,6 +15,7 @@ import {
   DownloadOutlined,
   FileTextOutlined,
   HomeOutlined,
+  PictureOutlined,
   PlayCircleOutlined,
   RocketOutlined,
   SettingOutlined,
@@ -27,6 +28,7 @@ import { TaskTable } from './components/TaskTable.js';
 import { Assets } from './pages/Assets.js';
 import { Avatar } from './pages/Avatar.js';
 import { Copywriting } from './pages/Copywriting.js';
+import { EcommerceImage } from './pages/EcommerceImage.js';
 import { Explosion } from './pages/Explosion.js';
 import { Home } from './pages/Home.js';
 import { LarkDownload } from './pages/LarkDownload.js';
@@ -42,6 +44,7 @@ type PageKey =
   | 'explosion'
   | 'native'
   | 'copywriting'
+  | 'ecommerce_image'
   | 'pretrailer'
   | 'avatar'
   | 'video_scoring'
@@ -55,6 +58,7 @@ const PAGE_TITLES: Record<PageKey, string> = {
   explosion: '广告爆款裂变',
   native: '原生素材',
   copywriting: '广告文案脚本',
+  ecommerce_image: '电商图片包装',
   pretrailer: '广告前贴',
   avatar: '数字人口播',
   video_scoring: '广告视频打分',
@@ -69,6 +73,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
   explosion: '链接到批量素材',
   native: '六行业工作流生成',
   copywriting: '需求拆解到爆款脚本',
+  ecommerce_image: '主图美化、背景替换与文案渲染',
   pretrailer: '原片到开场钩子',
   avatar: '品牌资料到口播视频',
   video_scoring: '完整视频到结构化评分',
@@ -81,6 +86,7 @@ const PAGE_SUBTITLES: Record<PageKey, string> = {
 const NAV_ITEMS: Array<{ key: PageKey; icon: ReactNode; label: string }> = [
   { key: 'home', icon: <HomeOutlined />, label: '工作台' },
   { key: 'copywriting', icon: <FileTextOutlined />, label: '广告文案脚本编写' },
+  { key: 'ecommerce_image', icon: <PictureOutlined />, label: '电商图片包装' },
   { key: 'explosion', icon: <ThunderboltOutlined />, label: '广告爆款素材裂变' },
   { key: 'native', icon: <RocketOutlined />, label: '原生素材生成' },
   { key: 'pretrailer', icon: <PlayCircleOutlined />, label: '广告吸引前贴生成' },
@@ -110,6 +116,7 @@ export function App() {
     if (page === 'explosion') return <Explosion />;
     if (page === 'native') return <Native />;
     if (page === 'copywriting') return <Copywriting />;
+    if (page === 'ecommerce_image') return <EcommerceImage />;
     if (page === 'pretrailer') return <Pretrailer />;
     if (page === 'avatar') return <Avatar />;
     if (page === 'video_scoring') return <VideoScoring />;

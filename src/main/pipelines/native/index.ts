@@ -212,6 +212,10 @@ function createRoute(input: NativeInput): IndustryRoute {
   if (input.industry === 'game') {
     hardRules.blacklistWords = ['外挂', '代练', '100%中奖'];
   }
+  if (input.industry === 'money_making') {
+    hardRules.blacklistWords = ['稳赚', '日入', '秒到账', '保证提现', '躺赚'];
+    hardRules.forbiddenScenes = ['虚假到账截图', '诱导点击下载'];
+  }
   if (input.industry === 'novel') {
     hardRules.outputNamePattern = '^AIGC_novel_.+\\.mp4$';
   }

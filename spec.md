@@ -1,4 +1,4 @@
-# 六行业爆款广告素材生成
+# 七行业爆款广告素材生成
 
 
 
@@ -15,7 +15,7 @@
 | N7 | ConsistencyChecker | UtilityProcess (vlm-worker) | Doubao VLM + sharp 抽帧 |
 | N8 | Composer + Post-Compliance | UtilityProcess (ffmpeg-worker) | fluent-ffmpeg + ffmpeg-static |
 
-当前 Electron 版本将六行业原生生成收敛为 `native` 任务类型，pipeline step 名称使用 snake_case：
+当前 Electron 版本将七行业原生生成收敛为 `native` 任务类型，pipeline step 名称使用 snake_case：
 
 1. `industry_router`：写入 `industry.json`
 2. `concept_planner`：写入 `concepts.json`
@@ -30,7 +30,7 @@
 
 广告文案脚本编写使用 `copywriting` 任务类型，是与原生广告生成、爆款广告裂变、广告前贴、数字人口播并列的一级模块。它面向“输入需求 → 匹配行业模板 → 大模型优化模板 → 联网补充产品/热点信息 → 拆解需求 → 深度策略分析 → 输出爆款广告脚本”的复杂 Agent 工作流，不进入视频/音频生成节点：
 
-1. `industry_router`：写入 `industry.json`，从六行业模板中匹配最适合的行业模板；用户选择具体行业时按选择路由，选择 `auto` 时根据需求文本自动匹配。
+1. `industry_router`：写入 `industry.json`，从七行业模板中匹配最适合的行业模板；用户选择具体行业时按选择路由，选择 `auto` 时根据需求文本自动匹配。
 2. `template_optimize`：写入 `template.json`，使用大模型把匹配到的行业模板优化为当前需求专用的脚本公式、模块、角度库和合规规则；模型可使用高 reasoning effort，但不得输出推理链。
 3. `web_research`：写入 `research.json`，通过 `ModelClient.webSearch` 调用 Ark Responses `web_search` 工具补充产品相关信息、用户关注点、平台热点和可安全借用的热梗；pipeline 不得直接外呼网络。
 4. `requirement_decompose`：写入 `requirement.json`，基于优化后的行业模板和联网补充拆解产品、人群、卖点、平台语境、限制条件和创意角度。
@@ -43,6 +43,14 @@
 2. `score`：写入 `score.json`，根据用户选择的广告类型调用对应评分 Prompt，直接用 `ModelClient.visionVideo(videoPath, prompt)` 返回结构化评分结果。
    - 在调用评分 Prompt 前，允许对本地音轨做一次 BGM 特征分析；当前实现使用 `meyda` 对抽取出的音频做能量、频谱和动态特征统计，并把摘要作为 Prompt 辅助上下文输入。
 3. `report_writer`：写入 `report.md` 并以 `report` 素材类型登记到素材库，供任务详情与素材库定位查看。
+
+电商图片包装使用 `ecommerce_image` 任务类型，是与视频类广告生成、广告文案脚本和广告视频打分并列的一级模块。它面向“输入本地商品主图 → 商品图理解与牛皮癣识别 → 文案生成与词性标注 → 主图美化 → 背景替换 → 渲染计划 → 文案渲染 → 入库图片素材”的电商图片包装流程，不进入视频/音频生成节点：
+
+1. `product_understand`：写入 `product.json`，通过 `ModelClient.vision` 识别商品主体、品类、视觉特征、疑似牛皮癣/非商品文案、背景问题、可安全使用卖点和合规风险。
+2. `copy_generate`：写入 `copy.json` 和 `copy.md`，通过 `ModelClient.chat` 生成主标题、副标题、徽标短语、关键词词性标注（名词/形容词/动词/其他）和文字样式策略。
+3. `main_image_beautify`：写入 `beautified.png` 和 `beautify_report.json`，通过 `ModelClient.generateImage` 去除主图中非商品文案、杂乱衬底、无关 logo、水印和牛皮癣样式元素，保留商品主体、包装核心识别和广告安全背景；成功后将 `beautified.png` 以 `image` 素材类型登记到素材库，tags 至少包含 `ecommerce_image`、`beautified`、style。
+4. `background_replace`：写入 `background_variant_<i>.png` 与 `backgrounds.json`，通过 Seedream 图生图能力保持商品主体不变并替换/融合背景；本地记录场景、风格、变体索引和提示词；成功后将每张 `background_variant_<i>.png` 以 `image` 素材类型登记到素材库，tags 至少包含 `ecommerce_image`、`background`、style。
+5. `copy_render`：先写入 `render_plan.json`，沉淀主标题、副标题、徽标、强调关键词、颜色策略、布局约束和每个背景变体的渲染计划；再写入 `final_<i>.png` 与 `finals.json`，将主标题、副标题和徽标按渲染计划、智能配色、名词放大、描边/斜体/边框/衬底等策略渲染到包装图。`finals.json` 必须记录每张最终图的 `status`、最终图路径、源背景路径、渲染 Prompt、主标题、副标题、徽标、强调关键词、风险提示和质量说明；最终图以 `image` 素材类型登记到素材库，tags 至少包含 `ecommerce_image`、`final`、style。
 
 广告爆款裂变、原生爆款素材生成、广告前贴生成、广告数字人口播都必须在脚本文案生成后、视频/音频生成前进入 `script_confirm` 确认环节。确认节点不调用模型，仅复用上游脚本文案产物供用户预览；任务状态为 `waiting_confirmation` 时，用户确认后通过 `task:confirm-script` 将该节点标记为 `success` 并恢复排队继续执行。
 
@@ -74,11 +82,21 @@
 | 社交 | 起承转合四段式 | 15-30s | 不露脸自拍 / 聊天记录截图 | 不良暗示词库 + 不实宣传词库 |
 | 工具 | 痛点 + 真人口播 + UI 演示 + CTA | 15-30s | 数字人口播 / UI 占位 / 创意空镜 | 真实承诺、无虚假宣传 |
 | 电商 | 场景痛点 + 商品卖点 + 证据背书 + 权益刺激 + CTA | 15-30s | 商品特写 / 使用场景 / 卖点对比 / 促销权益 | 价格真实性、促销规则、功效承诺、品牌授权 |
+| 网赚 | 可信赚钱钩子 + 网赚灵感原子 + 奖励视觉/UGC 叠加 + 信任背书 + CTA | 15-30s | 网赚灵感原子 / 红包金币宝箱奖励视觉 / 大字报或利益创意 / UGC奖励叠加或真人信任套路 | 收益表达克制可信，禁止保证收益、夸大提现、虚构到账、诱导误导下载 |
+
+网赚类素材规律来自飞书文档 `doxcnQhvGSVKjCpzfUxNTP8Uhth`：图片单卖点由背景底图、logo/警示语、网赚灵感原子透明图层组成，常见红包、宝箱、金蛋、金币、礼物盒等红黄奖励视觉；图片多卖点是在非网赚起量素材上叠加赚钱卖点。视频单卖点包含大字报滚屏、风景/解压/城市背景、红包掉落/翻动/加载等利益创意；视频多卖点是在老歌等下沉 UGC 上叠加红包、金币特效；真人类通过权威口播、感性口播、多人采访、情景剧建立“可信赚钱”感。
 
 ## 5.1 `native` 输入契约
 
 ```typescript
-type NativeIndustry = 'game' | 'short_drama' | 'novel' | 'social' | 'tool' | 'ecommerce';
+type NativeIndustry =
+  | 'game'
+  | 'short_drama'
+  | 'novel'
+  | 'social'
+  | 'tool'
+  | 'ecommerce'
+  | 'money_making';
 type NativeRatio = '9:16' | '16:9' | '1:1';
 type VideoResolution = '480p' | '720p' | '1080p';
 
@@ -90,7 +108,7 @@ interface NativeInput {
   referenceImagePaths?: string[]; // 可选，最多 9 张
   referenceAudioPath?: string; // 可选，本地音频绝对路径
   variantCount: number; // 1..5
-  durationSec: number;  // game/social/tool/ecommerce: 15..30, novel: 15..60, short_drama: 15..300
+  durationSec: number;  // game/social/tool/ecommerce/money_making: 15..30, novel: 15..60, short_drama: 15..300
   ratio: NativeRatio;
   resolution?: VideoResolution; // default: 720p
 }
@@ -156,6 +174,32 @@ interface VideoScoringResult {
 - `dimensionScores` 的轴名和数量按广告类型动态变化，不生成跨类型总分，也不做统一归一化。
 - `bgmAnalysis` 为本地音轨分析结果，主要作为广告节奏、情绪和音乐匹配度的辅助判断依据；即使本地分析不可用，也不影响任务成功。
 - 若合规不通过，任务仍可成功返回 `score.json` 与 `report.md`；此时必须至少返回 `category`、`compliancePass=false`、`complianceIssues`、`analysis`、`suggestions`，并允许 `dimensionScores` 为空对象。
+
+## 5.4 `ecommerce_image` 输入契约
+
+```typescript
+type EcommerceImageStyle = 'clean' | 'premium' | 'promotion' | 'lifestyle';
+
+interface EcommerceImageInput {
+  productImagePath: string; // 本地商品主图绝对路径，支持 png/jpg/jpeg/webp/bmp
+  productName?: string; // <= 100
+  sellingPoints?: string; // <= 1000，商品卖点、目标人群、禁用表达等补充信息
+  fixedCopy?: string; // <= 120，可选固定套路文案，如“快来抖音购物”
+  scenePrompt?: string; // <= 500，可选背景替换场景，如“清晨浴室台面”
+  variantCount: number; // 1..5
+  style: EcommerceImageStyle; // clean:干净主图；premium:高级质感；promotion:促销转化；lifestyle:生活场景
+}
+```
+
+`ecommerce_image` 默认通过 `ModelClient.generateImage` 承接 Seedream 图生图能力。当前 Electron 版本不在本地部署主体检测、抠图、OCR 或牛皮癣分割模型；商品主体、牛皮癣识别、主图美化、背景替换和文案渲染均通过云端模型与结构化 Prompt 完成，本地只负责输入校验、步骤编排、渲染计划、产物记录和素材入库。
+
+### 5.4.1 `ecommerce_image` 产物质量契约
+
+- `render_plan.json` 由 `copy_render` 在最终图片生成前写入，必须包含 `headline`、`subHeadline`、`badges`、`emphasizedKeywords`、`colorStrategy`、`layoutConstraints` 和与背景变体一一对应的 `items`。
+- `render_plan.json.items[]` 至少记录 `variantIndex`、`sourceBackgroundPath`、`scene`、`style`、`textPlacement`、`readabilityRules`、`forbiddenRegions` 和该变体最终渲染约束。
+- `finals.json.finals[]` 必须保留可追溯质量元信息，至少包含 `index`、`status`、`path`、`sourceBackgroundPath`、`prompt`、`headline`、`subHeadline`、`badges`、`emphasizedKeywords`、`riskNotes`、`qualityNotes`。
+- 单张最终图生成失败时，错误信息必须包含失败的变体 `index`；失败后的任务暂停/失败行为沿用现有 Pipeline runner。
+- 中间图片素材和最终图片素材都登记为 `image`，通过 tags 区分 `beautified`、`background`、`final`，便于素材库定位问题来源。
 
 
 ## 4. IPC 通信契约（强类型）

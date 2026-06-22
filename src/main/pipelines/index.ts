@@ -2,6 +2,7 @@ import type { TaskType } from '../../shared/types.js';
 import type { PipelineDefinition } from './types.js';
 import { avatarPipeline } from './avatar/index.js';
 import { copywritingPipeline } from './copywriting/index.js';
+import { ecommerceImagePipeline } from './ecommerce-image/index.js';
 import { explosionPipeline } from './explosion/index.js';
 import { larkDownloadPipeline } from './lark-download/index.js';
 import { nativePipeline } from './native/index.js';
@@ -15,6 +16,7 @@ const PIPELINES: Record<TaskType, PipelineDefinition> = {
   native: nativePipeline,
   copywriting: copywritingPipeline,
   video_scoring: videoScoringPipeline,
+  ecommerce_image: ecommerceImagePipeline,
   lark_download: larkDownloadPipeline,
 };
 

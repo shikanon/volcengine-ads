@@ -35,3 +35,13 @@ test('video scoring workflow exposes ingest-to-report nodes', () => {
     'report_writer',
   ]);
 });
+
+test('ecommerce image workflow exposes packaging nodes', () => {
+  expect(WORKFLOW_DEFINITIONS.ecommerce_image.nodes.map((node) => node.id)).toEqual([
+    'product_understand',
+    'copy_generate',
+    'main_image_beautify',
+    'background_replace',
+    'copy_render',
+  ]);
+});

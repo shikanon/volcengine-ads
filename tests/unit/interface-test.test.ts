@@ -600,6 +600,13 @@ describe('接口测试 - 全接口覆盖', () => {
       expect(pipeline?.type).toBe('video_scoring');
     });
 
+    it('ecommerce-image pipeline - 存在', async () => {
+      const { getPipeline } = await import('../../src/main/pipelines/index.js');
+      const pipeline = getPipeline('ecommerce_image');
+      expect(pipeline).toBeDefined();
+      expect(pipeline?.type).toBe('ecommerce_image');
+    });
+
     it('lark-download pipeline - 存在', async () => {
       const { getPipeline } = await import('../../src/main/pipelines/index.js');
       const pipeline = getPipeline('lark_download');
