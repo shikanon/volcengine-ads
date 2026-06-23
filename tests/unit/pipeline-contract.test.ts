@@ -202,6 +202,9 @@ describe('pipeline step contracts', () => {
     expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('非现金表达');
     expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('避免仿系统通知');
     expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('图标化短标签');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('代码渲染');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('文字层后叠图');
+    expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('艺术文字');
     expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('无文字图标');
     expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('避免密集小字');
     expect(MONEY_MAKING_MATERIAL_RULES_PROMPT).toContain('导致乱码');

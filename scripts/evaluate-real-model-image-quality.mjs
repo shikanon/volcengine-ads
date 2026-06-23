@@ -1,15 +1,28 @@
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
+import ffmpegPath from 'ffmpeg-static';
 import { fetch } from 'undici';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const promptVersion = '2026-06-23-money-making-image-v14';
+const promptVersion = '2026-06-23-money-making-image-v15-text-overlay';
 const outputRoot = join(root, 'tmp', 'real-model-image-quality');
+
+const fontCandidates = [
+  '/System/Library/Fonts/PingFang.ttc',
+  '/System/Library/Fonts/Supplemental/Songti.ttc',
+  '/System/Library/Fonts/Hiragino Sans GB.ttc',
+  '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+];
+
+function resolveFontFile() {
+  return process.env.REAL_IMAGE_FONT_FILE?.trim() || fontCandidates.find((candidate) => existsSync(candidate));
+}
 
 const sampleCases = [
   {
@@ -19,10 +32,17 @@ const sampleCases = [
     prompt: [
       '生成一张 9:16 信息流网赚广告测试图，主题是可信的轻量任务奖励提醒。',
       '画面必须突出单卖点奖励视觉：一个打开的红包或宝箱作为中心奖励原子，周围有金币、积分星标和任务权益图标，红黄高对比但不过度堆砌。',
-      '背景使用简洁渐变和普通任务卡片，任务卡片只放图标、色块和进度条，不生成任何汉字、英文字母、数字、符号文字或伪文字。',
-      '整张图采用无可读文字版本：不要写“任务奖励”“金币积分”“参与有机会”“广告创意样张”等任何文字，不要出现现金金额、提现截图、收益承诺或诱导下载。',
+      '背景使用简洁渐变和普通任务卡片，任务卡片只放图标、色块和进度条，顶部和底部预留干净留白给后期叠加中文艺术字。',
+      '底图不要生成任何汉字、英文字母、数字、符号文字或伪文字；中文 logo、警示语、大字卖点会由本地代码后期叠加。',
+      '不要出现现金金额、提现截图、收益承诺或诱导下载。',
       '构图像可投放广告素材：主体清晰，留白明确，层级分明，竖版封面完成度高。',
     ].join('\n'),
+    overlays: [
+      { text: '广告样张', x: '56', y: '52', fontSize: 34, fontColor: '#7a2a12', boxColor: '#fff3df@0.88', boxBorder: 16 },
+      { text: '做任务', x: '(w-text_w)/2', y: '126', fontSize: 86, fontColor: '#ffffff', borderColor: '#e3341e', borderWidth: 7, shadowColor: '#8f160b@0.45', shadowX: 4, shadowY: 5 },
+      { text: '集金币', x: '(w-text_w)/2', y: '228', fontSize: 118, fontColor: '#fff7a8', borderColor: '#d92d18', borderWidth: 9, shadowColor: '#8f160b@0.55', shadowX: 5, shadowY: 6 },
+      { text: '规则页查看', x: '(w-text_w)/2', y: 'h-168', fontSize: 48, fontColor: '#ffffff', boxColor: '#2f6fff@0.82', boxBorder: 24, borderColor: '#ffffff', borderWidth: 2 },
+    ],
   },
   {
     id: 'big-character-poster',
@@ -30,8 +50,9 @@ const sampleCases = [
     referenceColor: [255, 196, 41, 255],
     prompt: [
       '生成一张 9:16 网赚类大字报海报风格广告图，主题是可信任务福利提醒。',
-      '画面要有强视觉中心：用大号空白标题色块、强对比字块形状、红黄奖励元素、金币动效和红包/宝箱奖励原子表达大字报版式，但不要生成任何可读文字。',
-      '整张图禁止汉字、英文字母、数字、标点、符号文字、伪文字、乱码、密集小字、长句、表格、手机界面文字或复杂说明。',
+      '画面要有强视觉中心：用大号空白标题色块、强对比字块形状、红黄奖励元素、金币动效和红包/宝箱奖励原子表达大字报版式，顶部留出大片干净标题区域。',
+      '底图禁止汉字、英文字母、数字、标点、符号文字、伪文字、乱码、密集小字、长句、表格、手机界面文字或复杂说明。',
+      '大字标题、入口短标签和警示语会由本地代码后期叠加，不要让模型自己生成文字。',
       '不要生成手机任务卡片、聊天框、应用界面、功能按钮或任何需要小字说明的 UI 区块，避免模型生成乱码。',
       '用无文字图标区表达活动规则、积分用途、参与路径：三个圆角卡片只放图标、色块和箭头，不写中文标签，不做二维码和下载按钮。',
       '明确金币是积分道具，不展示现金金额，不展示提现入口。',
@@ -39,6 +60,13 @@ const sampleCases = [
       '整体像信息流买量素材：前三秒吸睛，背景干净，字块和奖励图形不遮挡关键主体。',
       '避免真实平台 Logo、伪造系统通知、二维码、价格牌和夸大收益。',
     ].join('\n'),
+    overlays: [
+      { text: '积分任务', x: '(w-text_w)/2', y: '104', fontSize: 132, fontColor: '#ffef72', borderColor: '#d91913', borderWidth: 11, shadowColor: '#8b180c@0.46', shadowX: 7, shadowY: 8 },
+      { text: '金币奖励', x: '(w-text_w)/2', y: '252', fontSize: 118, fontColor: '#ffffff', borderColor: '#e33918', borderWidth: 9, shadowColor: '#9d2a0d@0.42', shadowX: 5, shadowY: 6 },
+      { text: '参与路径', x: '96', y: 'h-310', fontSize: 38, fontColor: '#a74708', boxColor: '#ffffff@0.84', boxBorder: 14 },
+      { text: '积分用途', x: '(w-text_w)/2', y: 'h-310', fontSize: 38, fontColor: '#a74708', boxColor: '#ffffff@0.84', boxBorder: 14 },
+      { text: '规则页', x: 'w-text_w-96', y: 'h-310', fontSize: 38, fontColor: '#a74708', boxColor: '#ffffff@0.84', boxBorder: 14 },
+    ],
   },
   {
     id: 'ugc-reward-overlay',
@@ -48,11 +76,17 @@ const sampleCases = [
       '生成一张 9:16 下沉 UGC 风格网赚广告测试图，主题是普通人日常使用内容 App 后看到任务奖励提醒。',
       '画面包含真实生活背景和手持手机，不要做系统通知弹窗，不要仿冒消息中心或官方提醒。',
       '需要体现 UGC 奖励叠加：生活场景底图 + 半透明广告贴片 + 金币积分、红包装饰、宝箱、小任务卡片，多卖点但层级清晰。',
-      '贴片采用无可读文字版本：只放图标、色块、进度条和奖励图形，不生成任何汉字、英文字母、数字、符号文字、伪文字或密集小字。',
-      '如果模型无法稳定保持无文字，宁可留白或使用纯图标，不要生成模糊中文、错别字、乱码或随机字符。',
+      '贴片底图只放图标、色块、进度条和奖励图形，不生成任何汉字、英文字母、数字、符号文字、伪文字或密集小字。',
+      '中文标签会由本地代码后期叠加；如果模型无法稳定保持无文字，宁可留白或使用纯图标，不要生成模糊中文、错别字、乱码或随机字符。',
       '禁止保证收益、虚构提现、夸大赚钱效果、误导下载、现金金额和提现截图。',
       '素材要有投放感：主次清楚，奖励元素一眼可见，不脏乱，不像诈骗截图，不制造轻松高收益错觉。',
     ].join('\n'),
+    overlays: [
+      { text: '广告样张', x: '96', y: 'h-360', fontSize: 42, fontColor: '#1f1f1f', boxColor: '#ffffff@0.88', boxBorder: 18, borderColor: '#ffffff', borderWidth: 2 },
+      { text: '积分任务', x: '(w-text_w)/2', y: 'h-360', fontSize: 48, fontColor: '#ffffff', boxColor: '#ff5a1f@0.88', boxBorder: 18, borderColor: '#ffffff', borderWidth: 2 },
+      { text: '规则页', x: 'w-text_w-96', y: 'h-360', fontSize: 48, fontColor: '#ffffff', boxColor: '#2f6fff@0.88', boxBorder: 18, borderColor: '#ffffff', borderWidth: 2 },
+      { text: '福利提醒', x: '(w-text_w)/2', y: 'h-474', fontSize: 54, fontColor: '#ffffff', borderColor: '#315bc7', borderWidth: 6, shadowColor: '#000000@0.28', shadowX: 3, shadowY: 4 },
+    ],
   },
 ];
 
@@ -196,8 +230,113 @@ function solidPng(width, height, rgba) {
   ]);
 }
 
+function escapeDrawText(value) {
+  return value
+    .replace(/\\/gu, '\\\\')
+    .replace(/:/gu, '\\:')
+    .replace(/'/gu, "\\'")
+    .replace(/,/gu, '\\,')
+    .replace(/\[/gu, '\\[')
+    .replace(/\]/gu, '\\]');
+}
+
+function ffmpegColor(value) {
+  if (!value) {
+    return value;
+  }
+  const [color, alpha] = value.split('@');
+  const normalized = color.startsWith('#') ? `0x${color.slice(1)}` : color;
+  return alpha ? `${normalized}@${alpha}` : normalized;
+}
+
+function drawTextFilter(layer, fontFile) {
+  const options = [
+    fontFile ? `fontfile=${escapeDrawText(fontFile)}` : undefined,
+    `text='${escapeDrawText(layer.text)}'`,
+    `x=${layer.x}`,
+    `y=${layer.y}`,
+    `fontsize=${layer.fontSize}`,
+    `fontcolor=${ffmpegColor(layer.fontColor)}`,
+  ].filter(Boolean);
+  if (layer.borderColor && layer.borderWidth) {
+    options.push(`bordercolor=${ffmpegColor(layer.borderColor)}`, `borderw=${layer.borderWidth}`);
+  }
+  if (layer.boxColor) {
+    options.push('box=1', `boxcolor=${ffmpegColor(layer.boxColor)}`, `boxborderw=${layer.boxBorder ?? 12}`);
+  }
+  if (layer.shadowColor) {
+    options.push(
+      `shadowcolor=${ffmpegColor(layer.shadowColor)}`,
+      `shadowx=${layer.shadowX ?? 3}`,
+      `shadowy=${layer.shadowY ?? 3}`,
+    );
+  }
+  return `drawtext=${options.join(':')}`;
+}
+
+function runFfmpeg(args) {
+  if (!ffmpegPath) {
+    throw new Error('缺少 ffmpeg-static，无法渲染本地文字叠加层。');
+  }
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const stderr = [];
+    child.stderr.on('data', (chunk) => {
+      stderr.push(Buffer.from(chunk));
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`FFmpeg 文字叠加失败：${Buffer.concat(stderr).toString('utf8').slice(-1200)}`));
+    });
+  });
+}
+
+async function renderTextOverlay(basePath, outputPath, sample) {
+  const fontFile = resolveFontFile();
+  if (!fontFile) {
+    throw new Error('缺少可用中文字体，请通过 REAL_IMAGE_FONT_FILE 指定字体文件路径。');
+  }
+  const tempPaths = [];
+  let inputPath = basePath;
+  for (const [index, layer] of sample.overlays.entries()) {
+    const isLastLayer = index === sample.overlays.length - 1;
+    const layerOutputPath = isLastLayer ? outputPath : `${outputPath}.layer-${index}.png`;
+    if (!isLastLayer) {
+      tempPaths.push(layerOutputPath);
+    }
+    await runFfmpeg([
+      '-y',
+      '-i',
+      inputPath,
+      '-vf',
+      drawTextFilter(layer, fontFile),
+      '-frames:v',
+      '1',
+      '-update',
+      '1',
+      layerOutputPath,
+    ]);
+    inputPath = layerOutputPath;
+  }
+  await Promise.all(
+    tempPaths.map(async (tempPath) => {
+      try {
+        await unlink(tempPath);
+      } catch {
+        // 临时层清理失败不影响最终图片产物。
+      }
+    }),
+  );
+  return sample.overlays.map((layer) => layer.text);
+}
+
 async function generateImage(config, sample, runDir) {
   const referencePath = join(runDir, `${sample.id}-reference.png`);
+  const basePath = join(runDir, `${sample.id}-base.png`);
   const imagePath = join(runDir, `${sample.id}.png`);
   await writeFile(referencePath, solidPng(720, 1280, sample.referenceColor));
   const response = await fetchWithTimeout(`${config.baseUrl.replace(/\/$/, '')}/images/generations`, {
@@ -227,11 +366,12 @@ async function generateImage(config, sample, runDir) {
     if (!imageResponse.ok) {
       throw new Error(`下载样张 ${sample.id} 失败：HTTP ${imageResponse.status}`);
     }
-    await writeFile(imagePath, Buffer.from(await imageResponse.arrayBuffer()));
+    await writeFile(basePath, Buffer.from(await imageResponse.arrayBuffer()));
   } else {
-    await writeFile(imagePath, Buffer.from(first.b64_json, 'base64'));
+    await writeFile(basePath, Buffer.from(first.b64_json, 'base64'));
   }
-  return { imagePath, referencePath };
+  const overlayTexts = await renderTextOverlay(basePath, imagePath, sample);
+  return { imagePath, basePath, referencePath, overlayTexts };
 }
 
 function safeJsonParse(text) {
@@ -356,13 +496,15 @@ async function evaluateImage(config, sample, imagePath) {
               text: [
                 '请评估这张网赚类广告样张是否可接受，只输出 JSON。',
                 `样张类型：${sample.title}`,
+                `本图采用飞书文档流程：模型生成底图，本地代码再叠加中文文字层。应出现这些代码叠加文字：${sample.overlays.map((layer) => layer.text).join('、')}。`,
                 '评价维度：奖励视觉是否明确、网赚灵感原子是否突出、构图完成度、投放素材可用性、合规风险。',
                 '合规风险包括保证收益、虚构提现、夸大赚钱效果、诱导误导下载、真实品牌冒用、二维码或伪系统通知。',
                 '文字质量是硬门槛：必须检查整张图，包括背景、边缘、裁切区域、手机屏幕、贴片、按钮和小号字。',
                 '只要图片中出现明显错字、乱码、错误中文、语义不通的标签、随机字符、伪文字或不可辨认文字，就必须 accepted=false 且 textQualityPass=false。',
+                '如果代码叠加文字缺失、明显被遮挡、位置严重错误或不可读，也必须 accepted=false。',
                 '这是效果测试样张，不是正式投放落地页；不要因为缺少具体金额、提现比例、收益额度、完整活动规则或下载入口而直接拒绝，可把这些作为改进项。',
                 '网赚类合规优先：不要建议增加高收益卖点、提现截图、到账截图、现金金额或保证性收益描述。',
-                '只在奖励原子缺失、主体/构图明显失败、明显错字/乱码、画面像诈骗截图、或存在上述合规风险时 rejected；否则 accepted。',
+                '只在奖励原子缺失、主体/构图明显失败、代码文字缺失/遮挡/不可读、明显错字/乱码、画面像诈骗截图、或存在上述合规风险时 rejected；否则 accepted。',
                 '输出格式：{"accepted":true,"textQualityPass":true,"visibleTexts":["逐条列出看得清的文字；如果看到乱码或不可辨认文字也必须列出"],"scores":{"rewardVisual":0,"inspirationAtom":0,"composition":0,"adReadiness":0,"compliance":0},"issues":["..."],"explanation":"中文简短结论","nextIteration":"如果不通过，说明下一轮怎么改"}。',
               ].join('\n'),
             },
@@ -411,6 +553,8 @@ function reportMarkdown(run) {
       `### ${sample.title}`,
       `- 状态：${sample.evaluation.status}`,
       `- 图片路径：${sample.imagePath}`,
+      `- 底图路径：${sample.basePath}`,
+      `- 代码叠加文字：${sample.overlayTexts.join('、')}`,
       `- Prompt：${sample.prompt}`,
       `- 评价结论：${sample.evaluation.explanation}`,
       `- 文字质量：${sample.evaluation.textQualityPass === true ? 'pass' : 'fail'}`,
@@ -447,7 +591,9 @@ async function main() {
       id: sample.id,
       title: sample.title,
       imagePath: generated.imagePath,
+      basePath: generated.basePath,
       referencePath: generated.referencePath,
+      overlayTexts: generated.overlayTexts,
       prompt: sample.prompt,
       promptVersion,
       modelName: image.model,
